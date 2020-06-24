@@ -36,7 +36,6 @@ def twoErrorCalc(x, z, RMSEnorm = 2):
 	return e
 
 
-	
 def threeErrorCalc(x, z, RMSEnorm = 2, pnorm = 2):
 	global R0, X, Y, Z
 	
@@ -68,8 +67,6 @@ def writeSolutions(filename, z):
 	return 0
 
 
-
-
 class PlanePlot():
     def __init__(self):
         self.fig = plt.figure(figsize=(15,8))
@@ -80,11 +77,6 @@ class PlanePlot():
         
         self.ax.set_extent(self.extent, crs=ccrs.PlateCarree())
         
-        self.ax.add_feature(cfeature.COASTLINE.with_scale('50m'))
-        self.ax.add_feature(cfeature.BORDERS.with_scale('50m'), linestyle='--')
-        self.ax.add_feature(cfeature.LAND.with_scale('50m'))
-        self.ax.add_feature(cfeature.OCEAN.with_scale('50m'))
-        
         #ax.stock_img()
         #ax.add_feature(cfeature.LAND.with_scale('110m'))
         #ax.add_feature(cfeature.COASTLINE.with_scale('110m'))
@@ -93,7 +85,10 @@ class PlanePlot():
         #ax.add_feature(cfeature.RIVERS)
         #self.ax.add_feature(cfeature.STATES.with_scale('50m'), linestyle=':')
         
-        #self.fig.show()
+        self.ax.add_feature(cfeature.COASTLINE.with_scale('50m'))
+        self.ax.add_feature(cfeature.BORDERS.with_scale('50m'), linestyle='--')
+        self.ax.add_feature(cfeature.LAND.with_scale('50m'))
+        self.ax.add_feature(cfeature.OCEAN.with_scale('50m'))
         
     def addTrack(self, x, ac, z = None):
         
@@ -105,9 +100,7 @@ class PlanePlot():
             if (z is not None):
                 self.ax.plot(z[np.in1d(z.id, cur_id)].long, z[np.in1d(z.id, cur_id)].lat, transform=ccrs.Geodetic())
                 self.updateExtent(z[np.in1d(z.id, cur_id)].long, z[np.in1d(z.id, cur_id)].lat)
-                
-                
-                
+                   
     def addPoint(self, x, id, z = None):
         
         self.updateExtent(x[np.in1d(x.id, id)].long, x[np.in1d(x.id, id)].lat)
@@ -120,7 +113,6 @@ class PlanePlot():
             if z is not None:
                 self.ax.plot(z[z.id == c].long, z[z.id == c].lat, 'o', transform=ccrs.Geodetic())
                 
-        
     def addNode(self, nodes, ns):
         
         for n in ns:
@@ -135,9 +127,6 @@ class PlanePlot():
                 print(n)
                 self.updateExtent(nodes[nodes.n == n].long, nodes[nodes.n == n].lat)
                 self.ax.plot(nodes[nodes.n == n].long, nodes[nodes.n == n].lat, 'x', transform=ccrs.Geodetic())
-        
-        
-        
         
     def updateExtent(self, longs, lats):
         if np.isnan(longs).any() or np.isnan(lats).any():
@@ -163,34 +152,3 @@ class PlanePlot():
             
         self.ax.set_extent(self.extent, crs=ccrs.PlateCarree())
         
-
-	
-	
-def plotPlanes(x, ac, z = None, nodes = None):
-    
-    
-    
-    fig = plt.figure(figsize=(15, 8))
-    ax = fig.add_subplot(1, 1, 1, projection=ccrs.Robinson())
-    ax.set_extent([-10, 20, 40, 60], crs=ccrs.PlateCarree())
-    #ax.set_global()
-
-    #ax.stock_img()
-    ax.add_feature(cfeature.LAND.with_scale('110m'))
-    ax.add_feature(cfeature.OCEAN.with_scale('110m'))
-    ax.add_feature(cfeature.COASTLINE.with_scale('110m'))
-    ax.add_feature(cfeature.BORDERS, linestyle='--')
-    ax.add_feature(cfeature.LAKES, alpha=0.5)
-    ax.add_feature(cfeature.RIVERS)
-    ax.add_feature(cfeature.STATES.with_scale('10m'), linestyle=':')
-
-    ax.plot(-0.08, 51.53, 'go', transform=ccrs.PlateCarree())
-    #ax.plot([-0.08, 132], [51.53, 43.17], transform=ccrs.PlateCarree())
-    #ax.plot([-0.08, 132], [51.53, 43.17], transform=ccrs.Geodetic())
-
-
-    plt.show()
-    
-    
-    return ax
-	
