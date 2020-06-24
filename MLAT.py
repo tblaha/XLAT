@@ -5,14 +5,73 @@ Created on Tue Jun 23 22:40:56 2020
 @author: Till
 """
 
-
 import numpy as np
 import numpy.linalg as la
 from constants import *
+import scipy.optimize as sciop
+import sys
+
+
+def fun(N, mp, x):
+    """
+    Returns the range differences based on location and station locations. At 
+    the solution x_sol, the vector fval
+
+    Parameters
+    ----------
+    N : array(n, 3)
+        Station location matrix (cartesian).
+    mp : array(n*(n-1)/2, 2)
+        Mapping matrix, maps a time difference index to the indices of the 
+        subtrahend and minuend. Rows correspond to the Axis 0 of fval and the
+        TDOA measurements. The first column is the subtrahend, second column is
+        the minuend.
+    x : array(1, 3)
+        Location.
+
+    Returns
+    -------
+    fval : array(n*(n-1)/2, 1)
+        Differences in Ranges (distances station-aircraft) between each of the
+        stations in meter
+    """
+    
+    # number of TDOA measurements
+    n = np.size(mp, axis=0)
+    
+    # prealloc solution vector
+    fval = np.zeros([n, 1])
+    
+    # iterate over the items
+    for i in np.arange(n):
+        # Minuend (second column)  - Subtractor (first column)
+        # the mp map contains ids, but they start at 1, hence the -1
+        fval[i] =   la.norm( N[(mp[i,1]-1), :] - x )\
+                  - la.norm( N[(mp[i,0]-1), :] - x )
+    
+    return fval
+
 
 
 def delta(n, x0):
-    # 
+    """
+    local gradient vector to the range around station n around x0 in cartesian
+
+    Parameters
+    ----------
+    n : array(1,3)
+        station location (cartesian)
+    x0 : array(1,3)
+        linearization point
+
+    Returns
+    -------
+    d : array(1,3)
+        local gradient vector
+
+    """
+
+    # derivative of sqrt((x-xn)**2 + (y-yn)**2 + (z-zn)**2) around (x0, y0, z0)
     
     D  = np.array([(x0[0] - n[0]), (x0[1] - n[1]), (x0[2] - n[2])])
     nD = la.norm(D)
@@ -22,83 +81,232 @@ def delta(n, x0):
     return d
 
 
-def Jac(N, x0):
-    # N is nx3 
-    # 1, 2, ..., n
-    # 12, 13, 14, 15, 23, 24, 25, 34, 35, 45...
+
+def Jac(N, mp, x0):
+    """
+    Returns the Jacobian matrix of the linearization around x0 of fun(...). 
+    Useful for the first order approximation:
+        
+    fun(N, mp, x) = J(N, mp, x0) * (x - x0) + fun(N, mp, x0)
     
-    n = np.size(N, 0)
+    J(N, mp, x0) = [ [Del fun(n2-n1, mp, x0)], \
+                     [Del fun(n3-n1, mp, x0)], ... ]
+    J(N, mp, x0) = [ [delta(n2, x0) - delta(n1, x0)], \
+                     [delta(n3, x0) - delta(n1, x0)], ... ]    
     
-    ## generate mapping of distance vectors
-    dim = int(n*(n-1)/2)
-    mapping = np.zeros([dim, 2])
+    Parameters
+    ----------
+    N : array(n, 3)
+        Station location matrix (cartesian).
+    mp : array(n*(n-1)/2, 2)
+        Mapping matrix, maps a time difference index to the indices of the 
+        subtrahend and minuend. Rows correspond to the Axis 0 of fval and the
+        TDOA measurements. The first column is the subtrahend, second column is
+        the minuend.
+    x0 : array(1, 3)
+        Location around which to linearize.
+
+    Returns
+    -------
+    J : matrix(n*(n-1)/2, 3)
+        Jacobian matrix.
+
+    """
     
-    idx = 0
-    for i in np.arange(1,n):
-        for j in np.arange(i+1,n+1):
-            mapping[idx, :] = np.array([i, j])
-            idx = idx + 1
+    # number of TDOA measurements
+    n = np.size(mp, axis=0)
     
-    ## calculate row vectors and assemble matrix
-    J = np.matrix( np.zeros([dim, 3]) )
-    for i in np.arange(dim):
-        J[i, :] = delta( N[int(mapping[i,1]-1), :], x0 ) \
-        - delta( N[int(mapping[i,0]-1), :], x0 )
+    # prealloc matrix
+    J = np.matrix( np.zeros([n, 3]) )
     
-    return J, mapping
+    # iterate over the rows
+    for i in np.arange(n):
+        # Minuend (second column)  - Subtractor (first column)
+        # the mp map contains ids, but they start at 1, hence the -1
+        J[i, :] =   delta( N[(mp[i,1]-1), :], x0 )\
+                  - delta( N[(mp[i,0]-1), :], x0 )
+    
+    return J
+
 
 
 def iterx(N, T, xn):
+    """
+    Old fashioned NLLS iteration scheme; not currently used
+
+    Parameters
+    ----------
+    N : array(n, 3)
+        Station location matrix (cartesian).
+    T : array(n*(n-1)/2, 1)
+        TDOA vector.
+    xn : array(1, 3)
+        current location to linearize around.
+
+    Returns
+    -------
+    xnplus1 : array(1, 3)
+        next location according to the iteration scheme.
+
+    """
+    
     global C0
     
-    J,mp = Jac(N, xn)
+    # get Jacobian for linearization around previous value xn
+    J = Jac(N, xn)
     
-    delx = la.pinv(J) @ (T*C0 - (J @ xn).T)
-    #print(delx)
+    # invert equation above for (xnplus1 - xn)
+    delx = la.pinv(J) @ (T*C0 - fun(N, xn))
     
-    xnplus1 = np.array(xn + delx.T) # should be zero but isn't
+    # next value by adding the current linearization point to the solution to
+    # the linearization problem
+    xnplus1 = np.array(xn + delx.T) 
     
     return xnplus1[0]
     
 
+
 def NLLS_MLAT(MR, NR, idx):
-    global X,Y,Z
+    """
+    Wrapper of the iterative non-linear least squares calculation for ac 
+    position including preprocessing of the Station coordinates, TDOA and 
+    initial guess generation
+
+    Parameters
+    ----------
+    MR : pd.DataFrame
+        Measurements.
+    NR : pd.DataFrame
+        Stations.
+    idx : scalar
+        MR.id datapoint to solve.
+
+    Returns
+    -------
+    xn : array(1, 3)
+        Solution in the least square sense in CARTESIAN.
+    xn_sp : array(1, 3)
+        Solution in the least square sense in LAT, LONG, h(feet).
+    fval : scalar
+        Function value minus TDOA ranges at the found solution.
+
+    """
+    global X,Y,Z, SP2CART, CART2SP, C0, F2M
     
+    
+    
+    ### preprocess stations and measurements
+    
+    # find number of stations
     tmp = np.array(MR[MR.id == idx].n)
     stations = tmp[0]
     n = np.size(stations)
     
+    # convert station locations to cartesian
     lats  = np.array(NR[np.in1d(NR.n, stations)].iloc[:,1])
     longs = np.array(NR[np.in1d(NR.n, stations)].iloc[:,2])
     geoh  = np.array(NR[np.in1d(NR.n, stations)].iloc[:,3])
     
     N = np.array([ X(lats, longs, geoh), Y(lats, longs, geoh), Z(lats, longs, geoh) ]).T
     
-    tmp = np.array(MR[MR.id == idx].ns)
-    secs = tmp[0]*1e-9
-    
+    # find number of TDOA measurements available
     dim = int(n*(n-1)/2)
-    T   = np.zeros([dim, 1])
-    idx = 0
+    if dim < 3:
+        print("not enough stations")
+        sys.exit()
+        
+        
+    
+    ### convert unix time stamps of stations to TDOA*C0 differential ranges
+    
+    # grab station TOA
+    tmp = np.array(MR[MR.id == idx].ns) # get nanoseconds
+    secs = tmp[0]*1e-9 # convert to seconds
+    
+    # pre alloc 
+    T         = np.zeros([dim, 1])
+    mut_dists = np.zeros([dim, 1])
+    mp        = np.zeros([dim, 2]) # Mapping matrix, maps a time difference 
+                                   # index to the indices of the subtrahend and minuend.
+    
+    # iterate over the possible differences between 2 stations out of n
+    index = 0
     for i in np.arange(1,n):
         for j in np.arange(i+1,n+1):
-            T[idx, :] = secs[j-1] - secs[i-1]
-            idx = idx + 1
+            T[index, :] = secs[j-1] - secs[i-1]
+            mut_dists[index] = la.norm(N[j-1]-N[i-1])
+            mp[index, :] = np.array([i, j])
+            index = index + 1
+    
+    # make mapping contain on ints (for indexing with it later)
+    mp = np.vectorize(int)(mp)
     
     
-    x0 = np.sqrt(3)/3*6371e3*np.array([1,1,1]) # centre of the earth
-    itermax = 5 # max iterations
+    
+    
+    ### assess quality of measurements
+    
+    # scaled TDOA ranges by distances between stations
+    mut_dists_sc = T*C0/mut_dists 
+    
+    # select the K ones with the lowest ("sort") number --> most planar 
+    # surfaces as opposed to hyperboloids. This is a bool-array
+    active_pnts = np.in1d(np.arange(dim), np.argsort(abs(mut_dists_sc).T[0])[:3])
+    
+    # abs(mut_dists_sc) > 1 are unphysical (and most likely unsolvable, too)
+    if np.max(abs(mut_dists_sc[active_pnts])) > 1:
+        print("Best ", K, " measurements contain unphyiscal (lambda > 1) points")
+        sys.exit()
+    
+    
+    
+    ### actual solution process
+    
+    # generate initial guess --> find most suitable 2 stations to put the initial 
+    # guess in between. This satisfies at least 1 differential range equation
+    # and should help convergences. Suitable means smallest TDOA small comparted
+    # to distance between the stations (means hyperbolic surfaces become more 
+    # planar)
+    x0_idx = np.where(abs(mut_dists_sc) == np.min(abs(mut_dists_sc)))[0][0]
+    x0 = N[mp[x0_idx,0]-1,:] + (0.5+mut_dists_sc[x0_idx]/2) * (N[mp[x0_idx,1]-1,:] - N[mp[x0_idx,0]-1,:])
+    
+    """ previous attempts
+    #x0 = np.array([0,0,0])
+    #x0 = SP2CART(MR[MR.id == idx].lat.iloc[0], MR[MR.id == idx].long.iloc[0], MR[MR.id == idx].geoAlt.iloc[0])
+    #x0 = np.mean(N, axis=0)
+    #x0 = np.mean(N, axis=0) + SP2CART(lats[0], longs[0], -R0/F2M + 1e4)
+    #x0 = np.mean( [ N[0,:], N[1,:], N[2,:] ], axis=0 )
+    """
+    
+    # use scipy's LSQ solver based on Levenberg-Marqart with custom Jacobian
+    # only solve at active_points
+    sol = sciop.least_squares(\
+        lambda x: np.array(fun(N, mp, x).T)[0][active_pnts] - T.T[0][active_pnts] * C0, x0,\
+        jac=lambda x: np.array(Jac(N, mp, x)[active_pnts]), method='lm')
+    xn = sol.x
+    print(sol.success)
+    print(sol.message)
+    
+    """ Old fashioned NLLS
+    itermax = 20 # max iterations
     
     it = 0
+    xnminus1 = np.array([1,1,1])*1e10
     xn = x0
-    while it < itermax:
-        xn = iterx(N,T,xn)
-        print(xn)
+    while it < itermax and la.norm(xn-xnminus1) > 1:
+        xnminus1 = xn
+        xn = iterx(N,T,xnminus1)
         
         it = it + 1
     
+    if la.norm(xn-xnminus1) <= 1:
+        print ("Converged")
+        print(it)
+    else:
+        print ("Failed to converge")
+    """
+        
+    return xn, CART2SP(xn[0], xn[1], xn[2]), (fun(N, mp, xn)-T*C0)[active_pnts]
     
-    
-#NLLS_MLAT(MR,NR,1439661)
-#NLLS_MLAT(MR,NR,9999999)
+
     

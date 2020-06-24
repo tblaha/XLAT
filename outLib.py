@@ -13,54 +13,116 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import matplotlib.pyplot as plt
 
+
 def twoErrorCalc(x, z, RMSEnorm = 2):
+    """
+    2 dimensional RMSE using great circle distance on the ground truth height
+
+    Parameters
+    ----------
+    x : pd.DataFrame
+        Generated solution dataset (validation set).
+    z : pd.DataFrame
+        Ground truth solution dataset (validation set).
+    RMSEnorm : scalar, optional
+        RMSE root to use. The default is 2.
+
+    Returns
+    -------
+    e : scalar
+        RMSE.
+
+    """
+    
 	global R0, X, Y, Z
 	
+    # find the common indices (computed into x and preset in validation set z)
 	sol_idx_bool = np.in1d(x.id, z.id)
 	N = z.id.size
 	
+    # get lat and longs and ground truth geo height
 	lat_x  = np.array(x[sol_idx_bool].lat)
 	long_x = np.array(x[sol_idx_bool].long)
-	
 	lat_z  = np.array(z.lat)
 	long_z = np.array(z.long)
 	h_z    = np.array(z.geoAlt)
 	
+    # compute great circle distances ("2d" error) between guess and truth
 	norm_vec = np.zeros(1, N)
-	
 	for i in range(N):
 		norm_vec = gc((long_x[i], lat_x[i]), (long_z[i], lat_z[i])).meters * (R0+h_z)/R0
 	
+    # RMSE error sum
 	e = (np.sum(norm_vec**RMSEnorm)/N)**(1/RMSEnorm)
 	
 	return e
 
 
 def threeErrorCalc(x, z, RMSEnorm = 2, pnorm = 2):
+    """
+    3 dimensional RMSE using pnorm on cartesian coordinates
+
+    Parameters
+    ----------
+    x : pd.DataFrame
+        Generated solution dataset (validation set).
+    z : pd.DataFrame
+        Ground truth solution dataset (validation set).
+    RMSEnorm : scalar, optional
+        RMSE root to use. The default is 2.
+    pnorm : scalar, optional
+        pnorm for the cartesian distance calculation. The default is 2.
+
+    Returns
+    -------
+    e : scalar
+        RMSE.
+
+    """
 	global R0, X, Y, Z
 	
+    # find the common indices (computed into x and preset in validation set z)
 	sol_idx_bool = np.in1d(x.id, z.id)
 	N = z.id.size
 	
+    # get lat and longs and geo heights
 	lat_x  = np.array(x[sol_idx_bool].lat)
 	long_x = np.array(x[sol_idx_bool].long)
 	h_x    = np.array(x[sol_idx_bool].geoAlt)
-	
 	lat_z  = np.array(z.lat)
 	long_z = np.array(z.long)
 	h_z    = np.array(z.geoAlt)
 	
+    # convert to cartesian
 	cart_x = [X(lat_x, long_x, h_x), Y(lat_x, long_x, h_x), Z(lat_x, long_x, h_x)]
 	cart_z = [X(lat_z, long_z, h_z), Y(lat_z, long_z, h_z), Z(lat_z, long_z, h_z)]
 	
+    # calculate norms
 	norm_vec = la.norm(np.array(cart_z) - np.array(cart_x), pnorm, 0)
 	
+    # RMSE sum error
 	e = (np.sum(norm_vec**RMSEnorm)/N)**(1/RMSEnorm)
 	
 	return e
 
 
 def writeSolutions(filename, z):
+    """
+    write solution DataFrame to csv.
+
+    Parameters
+    ----------
+    filename : string
+        DESCRIPTION.
+    z : pd.DataFrame
+        DESCRIPTION.
+
+    Returns
+    -------
+    int
+        DESCRIPTION.
+
+    """
 	z.columns = ['id','latitude','longitude','geoAltitude']
 	z.to_csv(filename, index = False)
 	
@@ -68,7 +130,14 @@ def writeSolutions(filename, z):
 
 
 class PlanePlot():
+    """
+    Handles plotting of planes, tracks, stations and other points on a political
+    world map
+    """
     def __init__(self):
+        """
+        Generate initial plot window with the political map
+        """
         self.fig = plt.figure(figsize=(15,8))
         self.ax  = self.fig.add_subplot(1,1,1, projection=ccrs.Robinson())
         
@@ -90,7 +159,35 @@ class PlanePlot():
         self.ax.add_feature(cfeature.LAND.with_scale('50m'))
         self.ax.add_feature(cfeature.OCEAN.with_scale('50m'))
         
+    def __del__(self):
+        """
+        Destructor: needed so that figure automatically close on rerun, etc...
+
+        Returns
+        -------
+        None.
+
+        """
+        plt.close(self.fig)
+        
     def addTrack(self, x, ac, z = None):
+        """
+        add the trace of a plane. Also adjusts the plot window extent
+
+        Parameters
+        ----------
+        x : pd.DataFrame
+            contains plane location info.
+        ac : list of scalars
+            The (multiple) aircraft to compute tracks for.
+        z : pd.DataFrame, optional
+            Ground Truth dataframe. The default is None.
+
+        Returns
+        -------
+        None.
+
+        """
         
         for c in ac:
             cur_id = x[x.ac == c].id
@@ -102,7 +199,23 @@ class PlanePlot():
                 self.updateExtent(z[np.in1d(z.id, cur_id)].long, z[np.in1d(z.id, cur_id)].lat)
                    
     def addPoint(self, x, id, z = None):
+        """
+        add a planes position as a point. Also adjusts the plot window extent.
+
+        Parameters
+        ----------
+        x : pd.DataFrame
+            contains plane location info.
+        id : list of ints
+            The (multiple) sample id's to plot the locatinos for
+        z : pd.DataFrame, optional
+            Ground Truth dataframe. The default is None.
+
+        Returns
+        -------
+        None.
         
+        """
         self.updateExtent(x[np.in1d(x.id, id)].long, x[np.in1d(x.id, id)].lat)
         if z is not None:
             self.updateExtent(z[np.in1d(z.id, id)].long, z[np.in1d(z.id, id)].lat)
@@ -113,30 +226,102 @@ class PlanePlot():
             if z is not None:
                 self.ax.plot(z[z.id == c].long, z[z.id == c].lat, 'o', transform=ccrs.Geodetic())
                 
+    def addPointByCoords(self, sp):
+        """
+        add a point just by coordinates. Also adjusts the plot window extent.
+
+        Parameters
+        ----------
+        sp : array(n,2)
+            contains lat and long as row vectors
+
+        Returns
+        -------
+        None.
+        
+        """
+        
+        self.updateExtent(sp.T[1], sp.T[0])
+        
+        for lat,long in sp:
+            self.ax.plot(long, lat, '+', transform=ccrs.Geodetic())
+                
     def addNode(self, nodes, ns):
+        """
+        Add a station node by its id's. Also adjusts the plot window extent.
+
+        Parameters
+        ----------
+        nodes : pd.DataFrame
+            The stations dataframe.
+        ns : list of ints
+            the id's of the stations to be plotted.
+
+        Returns
+        -------
+        None.
+
+        """
         
         for n in ns:
             self.updateExtent(nodes[nodes.n == n].long, nodes[nodes.n == n].lat)
             self.ax.plot(nodes[nodes.n == n].long, nodes[nodes.n == n].lat, 'x', transform=ccrs.Geodetic())
         
     def addNodeById(self, nodes, x, id):
+        """
+        Add all station nodes receiving the measurement "id". Also adjusts the 
+        plot window extent.
+
+        Parameters
+        ----------
+        nodes : pd.DataFrame
+            The stations dataframe.
+        x : pd.DataFrame
+            Measurements. contains plane location info.
+
+        Returns
+        -------
+        None.
+
+        """
         
         for c in id:
             tmp = np.array(x[x.id == c].n)
             for n in tmp[0]:
-                print(n)
                 self.updateExtent(nodes[nodes.n == n].long, nodes[nodes.n == n].lat)
                 self.ax.plot(nodes[nodes.n == n].long, nodes[nodes.n == n].lat, 'x', transform=ccrs.Geodetic())
         
     def updateExtent(self, longs, lats):
+        """
+        Updates the lateral and vertical extend of the map plotted to added 
+        locations on the figure
+
+        Parameters
+        ----------
+        longs : array(n, 1)
+            Longs that were added.
+        lats : array(n, 1)
+            Lats that were added.
+
+        Returns
+        -------
+        int
+            DESCRIPTION.
+
+        """
+        
+        # check for NaNs
         if np.isnan(longs).any() or np.isnan(lats).any():
             print("NaN")
             return 1
         
+        # suppose the new extend based on the longs and lats passed to this function:
         new_extent_raw = np.array([np.min(longs), np.max(longs), np.min(lats), np.max(lats)])
         
-        #new_extent     = 
+        # see if this was the first time this function is called
         if not self.start_extent:
+            # if not the first time: update only if it is actually bigger or 
+            # smaller than the already existing extent
             new_extent     =[np.min( [ new_extent_raw[0]-1, self.extent[0] ] ), \
                              np.max( [ new_extent_raw[1]+1, self.extent[1] ] ), \
                              np.min( [ new_extent_raw[2]-1, self.extent[2] ] ), \
@@ -144,11 +329,10 @@ class PlanePlot():
             self.extent    = new_extent
                 
         else:
+            # if so, just use the extent based on the passed args plus margin
             self.extent    = new_extent_raw + np.array([-1, 1, -1, 1])
-            self.start_extent = False
+            self.start_extent = False # set first time flag to false
             
-        print (self.extent)
-            
-            
+        # actually make the changes in the axis object
         self.ax.set_extent(self.extent, crs=ccrs.PlateCarree())
         
