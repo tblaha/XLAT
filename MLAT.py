@@ -9,7 +9,18 @@ import numpy as np
 import numpy.linalg as la
 from constants import *
 import scipy.optimize as sciop
-import sys
+
+class FeasibilityError(Exception):
+    """Raised when calculation not feasibe"""
+    # 1. not enough stations
+    # 2. best measurements still unphysical
+     
+    pass
+
+class ConvergenceError(Exception):
+    """Raised when iterative procedure failes to converge"""
+    
+    pass
 
 
 def fun(N, mp, x):
@@ -40,17 +51,55 @@ def fun(N, mp, x):
     n = np.size(mp, axis=0)
     
     # prealloc solution vector
-    fval = np.zeros([n, 1])
+    fval     = np.zeros([n+1, 1])
+    fval[-1] = la.norm(x)  # altitude
     
     # iterate over the items
     for i in np.arange(n):
         # Minuend (second column)  - Subtractor (first column)
         # the mp map contains ids, but they start at 1, hence the -1
-        fval[i] =   la.norm( N[(mp[i,1]-1), :] - x )\
+        fval[i] = + la.norm( N[(mp[i,1]-1), :] - x )\
                   - la.norm( N[(mp[i,0]-1), :] - x )
+    
+        
     
     return fval
 
+
+def rho_alt(e, beta):
+    """
+    loss function to "prefer" the planes baroAlt to the (possibly conflicting)
+    hyperbolic surfaces. This is done by scaling up the error of the last
+    element of e == f**2 == (fun(N, mp, x) - T*C0)**2, which corresponds to 
+    the altitude error
+    https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
+
+    Parameters
+    ----------
+    e : array(3, m)
+        Error components of the objective functions.
+    beta : scalar > 0
+        Scaling factor to promote convergence of the altitude error. If large 
+        than 1, the altitude error will "mean more" to the NLLSq algorithm
+
+    Returns
+    -------
+    A : array(3, m)
+        as described in docs it contains
+        array[0, :]: rho(e)
+        array[1, :]: rho'(e) = diag(Del * rho(e)) (elementwise derivatives)
+        array[2, :]: rho''(e) = diag(Del**2 * rho(e)) (elementwise seconds derivatives)
+    """
+    
+    A     = np.empty([3, e.size])
+    scale = np.concatenate( (np.ones([e.size-1]), [beta]) )
+    A[0]  = e * scale 
+    A[1]  = scale # derivatives wrt elements of e
+    A[2]  = np.zeros_like(e) # seconds derivatives
+    
+    return A
+    
+    
 
 
 def delta(n, x0):
@@ -117,13 +166,14 @@ def Jac(N, mp, x0):
     n = np.size(mp, axis=0)
     
     # prealloc matrix
-    J = np.matrix( np.zeros([n, 3]) )
+    J = np.matrix( np.zeros([n+1, 3]) )
+    J[-1] = np.ones([1, 3]) * 1/la.norm(x0)
     
     # iterate over the rows
     for i in np.arange(n):
         # Minuend (second column)  - Subtractor (first column)
         # the mp map contains ids, but they start at 1, hence the -1
-        J[i, :] =   delta( N[(mp[i,1]-1), :], x0 )\
+        J[i, :] = delta( N[(mp[i,1]-1), :], x0 )\
                   - delta( N[(mp[i,0]-1), :], x0 )
     
     return J
@@ -166,7 +216,7 @@ def iterx(N, T, xn):
     
 
 
-def NLLS_MLAT(MR, NR, idx):
+def NLLS_MLAT(MR, NR, idx, solmode = 1):
     """
     Wrapper of the iterative non-linear least squares calculation for ac 
     position including preprocessing of the Station coordinates, TDOA and 
@@ -180,6 +230,10 @@ def NLLS_MLAT(MR, NR, idx):
         Stations.
     idx : scalar
         MR.id datapoint to solve.
+    solmode : scalar
+        the solution procedure to use:
+            0 --> self coded NLLSq
+            1 --> scipy.optimize.least_squares
 
     Returns
     -------
@@ -191,73 +245,72 @@ def NLLS_MLAT(MR, NR, idx):
         Function value minus TDOA ranges at the found solution.
 
     """
-    global X,Y,Z, SP2CART, CART2SP, C0, F2M
+    global X,Y,Z, SP2CART, CART2SP, C0
     
     
     
     ### preprocess stations and measurements
     
-    # find number of stations
-    tmp = np.array(MR[MR.id == idx].n)
-    stations = tmp[0]
-    n = np.size(stations)
     
-    # convert station locations to cartesian
-    lats  = np.array(NR[np.in1d(NR.n, stations)].iloc[:,1])
-    longs = np.array(NR[np.in1d(NR.n, stations)].iloc[:,2])
-    geoh  = np.array(NR[np.in1d(NR.n, stations)].iloc[:,3])
+    # find stations
+    stations = np.concatenate(MR[MR.id == idx].n.to_numpy())
+    n = MR[MR.id == idx].M.iloc[0]
+    
+    
+    # get station locations and convert to cartesian
+    lats  = NR.set_index('n').loc[stations].reset_index(inplace=False).lat.to_numpy()
+    longs = NR.set_index('n').loc[stations].reset_index(inplace=False).long.to_numpy()
+    geoh  = NR.set_index('n').loc[stations].reset_index(inplace=False).geoAlt.to_numpy()
     
     N = np.array([ X(lats, longs, geoh), Y(lats, longs, geoh), Z(lats, longs, geoh) ]).T
-    
+
+
     # find number of TDOA measurements available
     dim = int(n*(n-1)/2)
     if dim < 3:
-        print("not enough stations")
-        sys.exit()
-        
-        
+        raise FeasibilityError("not enough stations")
+    
     
     ### convert unix time stamps of stations to TDOA*C0 differential ranges
     
     # grab station TOA
-    tmp = np.array(MR[MR.id == idx].ns) # get nanoseconds
-    secs = tmp[0]*1e-9 # convert to seconds
-    
+    secs = np.concatenate(MR[MR.id == idx].ns.to_numpy())*1e-9 # get nanoseconds into seconds
+
     # pre alloc 
-    T         = np.zeros([dim, 1])
+    b         = np.zeros([dim+1, 1])
     mut_dists = np.zeros([dim, 1])
     mp        = np.zeros([dim, 2]) # Mapping matrix, maps a time difference 
                                    # index to the indices of the subtrahend and minuend.
-    
+
     # iterate over the possible differences between 2 stations out of n
     index = 0
     for i in np.arange(1,n):
         for j in np.arange(i+1,n+1):
-            T[index, :] = secs[j-1] - secs[i-1]
+            b[index, :]      = secs[j-1] - secs[i-1]
             mut_dists[index] = la.norm(N[j-1]-N[i-1])
-            mp[index, :] = np.array([i, j])
-            index = index + 1
+            mp[index, :]     = np.array([i, j])
+            index            = index + 1
     
     # make mapping contain on ints (for indexing with it later)
     mp = np.vectorize(int)(mp)
     
-    
+    # add altitude (radius) target from baroAlt (light speed normalized)
+    b[-1]       = (MR[MR.id == idx].baroAlt + R0) / C0
     
     
     ### assess quality of measurements
     
     # scaled TDOA ranges by distances between stations
-    mut_dists_sc = T*C0/mut_dists 
+    mut_dists_sc = b[0:-1]*C0/mut_dists
     
     # select the K ones with the lowest ("sort") number --> most planar 
     # surfaces as opposed to hyperboloids. This is a bool-array
-    active_pnts = np.in1d(np.arange(dim), np.argsort(abs(mut_dists_sc).T[0])[:3])
+    K = 2
+    active_pnts = np.in1d(np.arange(dim), np.argsort(abs(mut_dists_sc).T[0])[:K])
     
     # abs(mut_dists_sc) > 1 are unphysical (and most likely unsolvable, too)
     if np.max(abs(mut_dists_sc[active_pnts])) > 1:
-        print("Best ", K, " measurements contain unphyiscal (lambda > 1) points")
-        sys.exit()
-    
+        raise FeasibilityError("Best measurements contain unphyiscal (lambda > 1) points")
     
     
     ### actual solution process
@@ -269,44 +322,51 @@ def NLLS_MLAT(MR, NR, idx):
     # planar)
     x0_idx = np.where(abs(mut_dists_sc) == np.min(abs(mut_dists_sc)))[0][0]
     x0 = N[mp[x0_idx,0]-1,:] + (0.5+mut_dists_sc[x0_idx]/2) * (N[mp[x0_idx,1]-1,:] - N[mp[x0_idx,0]-1,:])
-    
     """ previous attempts
     #x0 = np.array([0,0,0])
     #x0 = SP2CART(MR[MR.id == idx].lat.iloc[0], MR[MR.id == idx].long.iloc[0], MR[MR.id == idx].geoAlt.iloc[0])
     #x0 = np.mean(N, axis=0)
-    #x0 = np.mean(N, axis=0) + SP2CART(lats[0], longs[0], -R0/F2M + 1e4)
+    #x0 = np.mean(N, axis=0) + SP2CART(lats[0], longs[0], -R0 + 1e4)
     #x0 = np.mean( [ N[0,:], N[1,:], N[2,:] ], axis=0 )
     """
     
-    # use scipy's LSQ solver based on Levenberg-Marqart with custom Jacobian
-    # only solve at active_points
-    sol = sciop.least_squares(\
-        lambda x: np.array(fun(N, mp, x).T)[0][active_pnts] - T.T[0][active_pnts] * C0, x0,\
-        jac=lambda x: np.array(Jac(N, mp, x)[active_pnts]), method='lm')
-    xn = sol.x
-    print(sol.success)
-    print(sol.message)
+    if solmode == 0:
+        # Old fashioned NLLS
+        itermax = 20 # max iterations
     
-    """ Old fashioned NLLS
-    itermax = 20 # max iterations
-    
-    it = 0
-    xnminus1 = np.array([1,1,1])*1e10
-    xn = x0
-    while it < itermax and la.norm(xn-xnminus1) > 1:
-        xnminus1 = xn
-        xn = iterx(N,T,xnminus1)
+        it = 0
+        xnminus1 = np.array([1,1,1])*1e10
+        xn = x0
+        while it < itermax and la.norm(xn-xnminus1) > 1:
+            xnminus1 = xn
+            xn = iterx(N,b,xnminus1)
+            
+            it = it + 1
         
-        it = it + 1
-    
-    if la.norm(xn-xnminus1) <= 1:
-        print ("Converged")
-        print(it)
-    else:
-        print ("Failed to converge")
-    """
+        if la.norm(xn-xnminus1) > 1:
+            raise ConvergenceError("Error norm not below threshold")
+            
+    elif solmode == 1:
+        llsq_active = np.concatenate( (active_pnts, [True]) )
+        # use scipy's LSQ solver based on Levenberg-Marqart with custom Jacobian
+        # only solve at active_points
+        sol = sciop.least_squares(\
+            lambda x: np.array(fun(N, mp, x).T)[0][llsq_active] - b.T[0][llsq_active] * C0, \
+            x0, \
+            jac=lambda x: np.array(Jac(N, mp, x)[llsq_active]), \
+            #method='dogbox', x_scale='jac', loss='linear', tr_solver='exact', \
+            #method='dogbox', x_scale='jac', loss='soft_l1', f_scale=1e4, tr_solver='exact', \
+            #method='dogbox', x_scale='jac', loss=lambda x: rho_alt(x, 1e0), f_scale=1e4, tr_solver='exact', \
+            method='lm', x_scale='jac', \
+            max_nfev=200, xtol=1e-8, gtol=1e-8, ftol=None, \
+            verbose=0)
+        xn = sol.x
         
-    return xn, CART2SP(xn[0], xn[1], xn[2]), (fun(N, mp, xn)-T*C0)[active_pnts]
+        if not sol.success:
+            raise ConvergenceError("sciop.least_squares not happy with its deed")
+    
+
+    return xn, CART2SP(xn[0], xn[1], xn[2]), (fun(N, mp, xn)-b*C0)[llsq_active]
     
 
     

@@ -13,6 +13,8 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import matplotlib.pyplot as plt
 
+from constants import *
+
 
 def twoErrorCalc(x, z, RMSEnorm = 2):
     """
@@ -34,29 +36,35 @@ def twoErrorCalc(x, z, RMSEnorm = 2):
 
     """
     
-	global R0, X, Y, Z
-	
+    global R0, X, Y, Z
+    
     # find the common indices (computed into x and preset in validation set z)
-	sol_idx_bool = np.in1d(x.id, z.id)
-	N = z.id.size
-	
+    sol_idx_bool = np.in1d(x.id, z.id)
+    N = z.id.size
+    
     # get lat and longs and ground truth geo height
-	lat_x  = np.array(x[sol_idx_bool].lat)
-	long_x = np.array(x[sol_idx_bool].long)
-	lat_z  = np.array(z.lat)
-	long_z = np.array(z.long)
-	h_z    = np.array(z.geoAlt)
-	
+    lat_x  = np.array(x[sol_idx_bool].lat)
+    long_x = np.array(x[sol_idx_bool].long)
+    lat_z  = np.array(z.lat)
+    long_z = np.array(z.long)
+    h_z    = np.array(z.geoAlt)
+    
     # compute great circle distances ("2d" error) between guess and truth
-	norm_vec = np.zeros(1, N)
-	for i in range(N):
-		norm_vec = gc((long_x[i], lat_x[i]), (long_z[i], lat_z[i])).meters * (R0+h_z)/R0
-	
+    norm_vec = np.zeros([1, N])
+    for i in range(N):
+        try:
+            norm_vec[0,i] = gc((lat_x[i], long_x[i]), (lat_z[i], long_z[i])).meters * (R0+h_z[i])/R0
+            if np.isnan(norm_vec[0,i]) or norm_vec[0,i] > 2e5:
+                norm_vec[0,i] = 0
+                N = N - 1
+        except ValueError:
+            norm_vec[0,i] = 0
+            N = N - 1
+    
     # RMSE error sum
-	e = (np.sum(norm_vec**RMSEnorm)/N)**(1/RMSEnorm)
-	
-	return e
-
+    e = (np.sum(norm_vec**RMSEnorm)/N)**(1/RMSEnorm)
+    
+    return e, norm_vec
 
 def threeErrorCalc(x, z, RMSEnorm = 2, pnorm = 2):
     """
@@ -79,31 +87,31 @@ def threeErrorCalc(x, z, RMSEnorm = 2, pnorm = 2):
         RMSE.
 
     """
-	global R0, X, Y, Z
-	
+    global R0, X, Y, Z
+    
     # find the common indices (computed into x and preset in validation set z)
-	sol_idx_bool = np.in1d(x.id, z.id)
-	N = z.id.size
-	
+    sol_idx_bool = np.in1d(x.id, z.id)
+    N = z.id.size
+    
     # get lat and longs and geo heights
-	lat_x  = np.array(x[sol_idx_bool].lat)
-	long_x = np.array(x[sol_idx_bool].long)
-	h_x    = np.array(x[sol_idx_bool].geoAlt)
-	lat_z  = np.array(z.lat)
-	long_z = np.array(z.long)
-	h_z    = np.array(z.geoAlt)
-	
+    lat_x  = np.array(x[sol_idx_bool].lat)
+    long_x = np.array(x[sol_idx_bool].long)
+    h_x    = np.array(x[sol_idx_bool].geoAlt)
+    lat_z  = np.array(z.lat)
+    long_z = np.array(z.long)
+    h_z    = np.array(z.geoAlt)
+    
     # convert to cartesian
-	cart_x = [X(lat_x, long_x, h_x), Y(lat_x, long_x, h_x), Z(lat_x, long_x, h_x)]
-	cart_z = [X(lat_z, long_z, h_z), Y(lat_z, long_z, h_z), Z(lat_z, long_z, h_z)]
-	
+    cart_x = [X(lat_x, long_x, h_x), Y(lat_x, long_x, h_x), Z(lat_x, long_x, h_x)]
+    cart_z = [X(lat_z, long_z, h_z), Y(lat_z, long_z, h_z), Z(lat_z, long_z, h_z)]
+    
     # calculate norms
-	norm_vec = la.norm(np.array(cart_z) - np.array(cart_x), pnorm, 0)
-	
+    norm_vec = la.norm(np.array(cart_z) - np.array(cart_x), pnorm, 0)
+    
     # RMSE sum error
-	e = (np.sum(norm_vec**RMSEnorm)/N)**(1/RMSEnorm)
-	
-	return e
+    e = (np.sum(norm_vec**RMSEnorm)/N)**(1/RMSEnorm)
+    
+    return e
 
 
 def writeSolutions(filename, z):
@@ -123,10 +131,12 @@ def writeSolutions(filename, z):
         DESCRIPTION.
 
     """
-	z.columns = ['id','latitude','longitude','geoAltitude']
-	z.to_csv(filename, index = False)
-	
-	return 0
+    zz = z.copy(deep=True)
+    zz.columns = ['id','latitude','longitude','geoAltitude']
+    zz.to_csv(filename, index = False, \
+              na_rep = 'NaN') # not-a-number string
+    
+    return 0
 
 
 class PlanePlot():
@@ -146,7 +156,7 @@ class PlanePlot():
         
         self.ax.set_extent(self.extent, crs=ccrs.PlateCarree())
         
-        #ax.stock_img()
+        #self.ax.stock_img()
         #ax.add_feature(cfeature.LAND.with_scale('110m'))
         #ax.add_feature(cfeature.COASTLINE.with_scale('110m'))
         #ax.add_feature(cfeature.BORDERS, linestyle='--')
@@ -191,8 +201,8 @@ class PlanePlot():
         
         for c in ac:
             cur_id = x[x.ac == c].id
-            self.ax.plot(x[x.ac == c].long, x[x.ac == c].lat, transform=ccrs.Geodetic())
             self.updateExtent(x[x.ac == c].long, x[x.ac == c].lat)
+            self.ax.plot(x[x.ac == c].long, x[x.ac == c].lat, transform=ccrs.Geodetic())
             
             if (z is not None):
                 self.ax.plot(z[np.in1d(z.id, cur_id)].long, z[np.in1d(z.id, cur_id)].lat, transform=ccrs.Geodetic())

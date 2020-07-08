@@ -34,16 +34,16 @@ arctan2d = lambda z,x: 180/np.pi * np.arctan2(z,x)
 # coordinate transformations
 
 #https://en.wikipedia.org/wiki/Spherical_coordinate_system#Coordinate_system_conversions
-X = lambda lat, long, h: (h*F2M + R0) * sind(90-lat) * cosd(long)
-Y = lambda lat, long, h: (h*F2M + R0) * sind(90-lat) * sind(long)
-Z = lambda lat, long, h: (h*F2M + R0) * cosd(90-lat)
+X = lambda lat, long, h: (h + R0) * sind(90-lat) * cosd(long)
+Y = lambda lat, long, h: (h + R0) * sind(90-lat) * sind(long)
+Z = lambda lat, long, h: (h + R0) * cosd(90-lat)
 
 SP2CART = lambda lat,long,h: np.array([X(lat,long,h), Y(lat,long,h), Z(lat,long,h)])
 
 
 LAT  = lambda x,y,z: 90 - arctan2d(np.sqrt(x**2+y**2),z) # using the tan formula for robustness around centre of earth
 LONG = lambda x,y,z: arctan2d(y,x)
-H    = lambda x,y,z: (la.norm(np.array([x,y,z])) - R0)/F2M
+H    = lambda x,y,z: (la.norm(np.array([x,y,z])) - R0)
 
 CART2SP = lambda x,y,z: np.array([LAT(x,y,z), LONG(x,y,z), H(x,y,z)])
 
