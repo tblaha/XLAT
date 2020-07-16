@@ -11,6 +11,8 @@ Created on Sun Jun 21 17:07:51 2020
 
 
 
+import cProfile, pstats, io
+from pstats import SortKey
 
 from   constants import *
 
@@ -34,41 +36,57 @@ import sklearn.model_selection as sklms
 
 ###import and pre-process
 use_pickle = False
-path_meas = "../training_7_category_1/"
-path_res  = "../training_7_category_1_result/"
+use_files  = 1 # -1 --> competition; 1 through 7 --> training
 
+if use_files == -1:
+    path    = "../Data/round1_competition"
+    fnameMR = "round1_competition.csv"
+    fnameSR = "round1_sample_empty.csv"
+elif use_files > 0:
+    path    = "../Data/training_"+str(use_files)+"_category_1"
+    fnameMR = "training_"+str(use_files)+"_category_1.csv"
+    fnameSR = "training_"+str(use_files)+"_category_1_result.csv"
+
+
+
+    
 # read csv files
-if os.path.isfile("./MR_pickle") and use_pickle:
+if os.path.isfile("./MR.pkl") and use_pickle:
     MR = pd.read_pickle("./MR.pkl")
 else:
-    MR = rlib.readMeasurements(path_meas+"training_7_category_1.csv")
+    MR = rlib.readMeasurements(path+"/"+fnameMR)
     MR.to_pickle("./MR.pkl")
 
 
 
-if os.path.isfile("./NR_pickle") and use_pickle:
+if os.path.isfile("./NR.pkl") and use_pickle:
     NR = pd.read_pickle("./NR.pkl")
 else:
-    NR = rlib.readNodes(path_meas+"sensors.csv")
+    NR = rlib.readNodes(path+"/sensors.csv")
     NR.to_pickle("./NR.pkl")
     
     
     
-if os.path.isfile("./SR_pickle") and use_pickle:
+if os.path.isfile("./SR.pkl") and use_pickle:
     SR = pd.read_pickle("./SR.pkl")
 else:
-    SR = rlib.readSolutions(path_res+"training_7_category_1_result.csv")
+    SR = rlib.readSolutions(path+"_result/"+fnameSR)
     SR.to_pickle("./SR.pkl")
 
 
+
 print("Finished importing data")
+
+
+
+
 
 # use separate SR file for validation 
 # or
 # select random data points with GT from MR set
 np.random.seed(1)
-use_SR = True
-K      = 1000 # how many data points to read out of the millions and use for validation
+use_SR = False
+K      = 10000 # how many data points to read out of the millions and use for validation
 p_vali = 0.05 # share of K used for validation
 
 TRA, VAL = rlib.segmentData(MR, use_SR, SR, K = K, p = p_vali)
@@ -114,23 +132,28 @@ pp.addNodeById(NR, MR, [seek_id])
 """
 
 # initialise solution dataframe
-
 SOL = VAL.copy(deep=True)
 SOL[["lat", "long", "geoAlt"]] = np.nan
+
+TRA['n_used'] = ""
+TRA['n_used'] = TRA['n_used'].astype(object)
 
 
 t = time.time()
 interv = 250
 counter = 0
+#pr = cProfile.Profile()
+#pr.enable()
 for idx in SOL.id:
     try:
         xn, xn_sph, fval = ml.NLLS_MLAT(TRA, NR, idx, solmode = 1)
         SOL.loc[SOL.id == idx, ["lat", "long", "geoAlt"]] = xn_sph
         
     except (ml.FeasibilityError, ml.ConvergenceError):
-        xn     = np.array([-1, -1, -1])
-        xn_sph = np.array([-1, -1, -1])
-        fval   = np.array([-1, -1, -1])
+        #xn     = np.array([-1, -1, -1])
+        #xn_sph = np.array([-1, -1, -1])
+        #fval   = np.array([-1, -1, -1])
+        pass
     
     if not counter%interv:
         print("current id:", idx, " of ", max(SOL.id), ": %.2f %%" % (idx/max(SOL.id)*100) )
@@ -143,9 +166,22 @@ el = time.time() - t
 print(el)
 
 
-olib.writeSolutions("../comp1_.csv", SOL)
+#pr.disable()
+
+#olib.writeSolutions("../comp1_.csv", SOL)
 RMSE, nv = olib.twoErrorCalc(SOL, VAL, RMSEnorm = 2)
 
 
 
+TRA.loc[np.in1d(TRA.id, VAL.id), "NormError"] = nv[0]
+SEL = TRA[~np.isnan(TRA.NormError) * TRA.NormError >= 3000].sort_values(by="NormError", ascending=True)
 
+
+#pr.disable()
+#pr.print_stats()
+
+# s = io.StringIO()
+# sortby = SortKey.CUMULATIVE
+# ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+# ps.print_stats()
+# print('\n'.join(s.getvalue().split('\n')[0:100]))

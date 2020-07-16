@@ -358,12 +358,22 @@ def NLLS_MLAT(MR, NR, idx, solmode = 1):
             #method='dogbox', x_scale='jac', loss='soft_l1', f_scale=1e4, tr_solver='exact', \
             #method='dogbox', x_scale='jac', loss=lambda x: rho_alt(x, 1e0), f_scale=1e4, tr_solver='exact', \
             method='lm', x_scale='jac', \
-            max_nfev=200, xtol=1e-8, gtol=1e-8, ftol=None, \
+            max_nfev=40, xtol=1e-8, gtol=1e-8, ftol=None, \
             verbose=0)
         xn = sol.x
         
-        if not sol.success:
-            raise ConvergenceError("sciop.least_squares not happy with its deed")
+        # yep, python is ridiculous... this selects to used stations and adds it to the dataframe
+        try:
+            MR.n_used.loc[idx-1] = \
+                tuple(np.array(MR.loc[MR.id == idx, 'n'].to_numpy()[0])[np.unique(mp[active_pnts])-1])
+        except IndexError:
+            print("asdf")
+            
+        MR.loc[MR.id == idx, "cost"] = sol.cost
+        MR.loc[MR.id == idx, "nfev"] = sol.nfev
+        
+        if not sol.success or sol.cost > 2e6:
+            raise ConvergenceError("Not happy with sciop.least_squares' deed")
     
 
     return xn, CART2SP(xn[0], xn[1], xn[2]), (fun(N, mp, xn)-b*C0)[llsq_active]

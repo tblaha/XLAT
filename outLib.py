@@ -54,7 +54,7 @@ def twoErrorCalc(x, z, RMSEnorm = 2):
     for i in range(N):
         try:
             norm_vec[0,i] = gc((lat_x[i], long_x[i]), (lat_z[i], long_z[i])).meters * (R0+h_z[i])/R0
-            if np.isnan(norm_vec[0,i]) or norm_vec[0,i] > 2e5:
+            if np.isnan(norm_vec[0,i]):# or norm_vec[0,i] > 2e5:
                 norm_vec[0,i] = 0
                 N = N - 1
         except ValueError:

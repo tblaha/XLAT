@@ -58,7 +58,7 @@ def readMeasurements(filename):
     """
     
     # naive read
-    MR = pd.read_csv(filename, delimiter=',')
+    MR = pd.read_csv(filename, delimiter=',', index_col=0)
     
     # rename columns
     MR = MR.rename(columns = {'timeAtServer':'t', 'aircraft':'ac', 'latitude':'lat', 'longitude':'long', 'baroAltitude':'baroAlt', 'geoAltitude':'geoAlt', 'numMeasurements':'M', 'measurements':'m'})
@@ -155,19 +155,20 @@ def segmentData(MR, use_SR, SR = None, K = 0, p = 0):
         Mrows_GT = len(MR_GT)
         
         # get training and validation sets
-        tra_idx, val_idx = sklms.train_test_split(MR_GT.index,\
-                                                  test_size=p*K/Mrows_GT, \
-                                                  train_size=K/Mrows_GT)
-        TRA = MR_GT.loc[np.concatenate(tra_idx, val_idx)]
-        VAL = MR_GT[['id', 'lat', 'long', 'geoAlt']].loc[val_idx]
+        #tra_idx, val_idx = sklms.train_test_split(MR_GT.index,\
+        #                                          test_size=p*K/Mrows_GT, \
+        #                                          train_size=K/Mrows_GT)
+        
+        tra_idx = np.random.choice( MR_GT.id, size=K, replace=False )
+        val_idx = np.random.choice( tra_idx, size=int(K*p), replace=False )
+        
+        TRA = MR_GT.loc[np.in1d(MR_GT.id, tra_idx)].copy(deep=True)
+        VAL = MR_GT[['id', 'lat', 'long', 'geoAlt']].loc[np.in1d(MR_GT.id, val_idx)].copy(deep=True)
         
         # NaN out the VAL lines in the training set:
-        TRA.loc[np.in1d(TRA.id, [102,103]), ['lat', 'long', 'geoAlt']] = np.nan
+        TRA.loc[np.in1d(TRA.id, VAL.id), ['lat', 'long', 'geoAlt']] = np.nan
         
     return TRA, VAL
-
-
-
 
 
 
