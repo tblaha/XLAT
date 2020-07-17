@@ -5,6 +5,9 @@
 *.cprof
 *.cprof.log
 
+# whatever this is 
+.pylint.d
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

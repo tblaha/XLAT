@@ -57,9 +57,8 @@ def fun(N, mp, x):
     # iterate over the items
     for i in np.arange(n):
         # Minuend (second column)  - Subtractor (first column)
-        # the mp map contains ids, but they start at 1, hence the -1
-        fval[i] = + la.norm( N[(mp[i,1]-1), :] - x )\
-                  - la.norm( N[(mp[i,0]-1), :] - x )
+        fval[i] = la.norm( N[(mp[i,1]), :] - x )\
+                  - la.norm( N[(mp[i,0]), :] - x )
     
         
     
@@ -72,7 +71,8 @@ def rho_alt(e, beta):
     hyperbolic surfaces. This is done by scaling up the error of the last
     element of e == f**2 == (fun(N, mp, x) - T*C0)**2, which corresponds to 
     the altitude error
-    https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
+    https://docs.scipy.org/doc/scipy/reference/generated/
+    scipy.optimize.least_squares.html
 
     Parameters
     ----------
@@ -88,7 +88,7 @@ def rho_alt(e, beta):
         as described in docs it contains
         array[0, :]: rho(e)
         array[1, :]: rho'(e) = diag(Del * rho(e)) (elementwise derivatives)
-        array[2, :]: rho''(e) = diag(Del**2 * rho(e)) (elementwise seconds derivatives)
+        array[2, :]: rho''(e) = diag(Del**2 * rho(e)) (el. seconds derivatives)
     """
     
     A     = np.empty([3, e.size])
@@ -166,15 +166,14 @@ def Jac(N, mp, x0):
     n = np.size(mp, axis=0)
     
     # prealloc matrix
-    J = np.matrix( np.zeros([n+1, 3]) )
+    J = np.matrix( np.zeros([n + 1, 3]) )
     J[-1] = np.ones([1, 3]) * 1/la.norm(x0)
     
     # iterate over the rows
     for i in np.arange(n):
         # Minuend (second column)  - Subtractor (first column)
-        # the mp map contains ids, but they start at 1, hence the -1
-        J[i, :] = delta( N[(mp[i,1]-1), :], x0 )\
-                  - delta( N[(mp[i,0]-1), :], x0 )
+        J[i, :] = delta(N[(mp[i, 1]), :], x0)\
+                  - delta(N[(mp[i, 0]), :], x0)
     
     return J
 
@@ -253,82 +252,71 @@ def NLLS_MLAT(MR, NR, idx, solmode = 1):
     
     
     # find stations
-    stations = np.concatenate(MR[MR.id == idx].n.to_numpy())
-    n = MR[MR.id == idx].M.iloc[0]
+    stations = np.array(MR.at[idx,'n'])
+    n = MR.at[idx, 'M']
     
     
     # get station locations and convert to cartesian
-    lats  = NR.set_index('n').loc[stations].reset_index(inplace=False).lat.to_numpy()
-    longs = NR.set_index('n').loc[stations].reset_index(inplace=False).long.to_numpy()
-    geoh  = NR.set_index('n').loc[stations].reset_index(inplace=False).geoAlt.to_numpy()
+    lats, longs, geoh \
+        = NR.loc[stations, ['lat', 'long', 'geoAlt']].to_numpy().T
     
-    N = np.array([ X(lats, longs, geoh), Y(lats, longs, geoh), Z(lats, longs, geoh) ]).T
-
-
+    N = SP2CART(lats, longs, geoh).T
+    
     # find number of TDOA measurements available
     dim = int(n*(n-1)/2)
     if dim < 3:
         raise FeasibilityError("not enough stations")
     
-    
     ### convert unix time stamps of stations to TDOA*C0 differential ranges
     
     # grab station TOA
-    secs = np.concatenate(MR[MR.id == idx].ns.to_numpy())*1e-9 # get nanoseconds into seconds
+    secs = np.array(MR.at[idx, 'ns']) * 1e-9 # get nanoseconds into seconds
+    Rs = secs * C0 # meters
 
     # pre alloc 
-    b         = np.zeros([dim+1, 1])
+    b         = np.zeros([dim + 1])
     mut_dists = np.zeros([dim, 1])
     mp        = np.zeros([dim, 2]) # Mapping matrix, maps a time difference 
-                                   # index to the indices of the subtrahend and minuend.
+                                   # index to the indices of the subtrahend 
+                                   # and minuend.
 
     # iterate over the possible differences between 2 stations out of n
-    index = 0
-    for i in np.arange(1,n):
-        for j in np.arange(i+1,n+1):
-            b[index, :]      = secs[j-1] - secs[i-1]
-            mut_dists[index] = la.norm(N[j-1]-N[i-1])
-            mp[index, :]     = np.array([i, j])
-            index            = index + 1
+    mp = np.array([[i,j] for i in range(n) for j in range(i+1,n)])
+    b[:-1] = secs[mp[:, 1]] - secs[mp[:, 0]]
+    mut_dists = la.norm(N[mp[:, 1]] - N[mp[:, 0]])
     
-    # make mapping contain on ints (for indexing with it later)
-    mp = np.vectorize(int)(mp)
     
     # add altitude (radius) target from baroAlt (light speed normalized)
-    b[-1]       = (MR[MR.id == idx].baroAlt + R0) / C0
+    b[-1]       = (MR.loc[idx, 'baroAlt'] + R0) / C0
     
     
     ### assess quality of measurements
     
     # scaled TDOA ranges by distances between stations
-    mut_dists_sc = b[0:-1]*C0/mut_dists
+    mut_dists_sc = b[0:-1] * C0 / mut_dists
     
     # select the K ones with the lowest ("sort") number --> most planar 
     # surfaces as opposed to hyperboloids. This is a bool-array
     K = 2
-    active_pnts = np.in1d(np.arange(dim), np.argsort(abs(mut_dists_sc).T[0])[:K])
+    active_pnts = np.in1d(np.arange(dim), np.argsort(abs(mut_dists_sc).T)[:K])
     
     # abs(mut_dists_sc) > 1 are unphysical (and most likely unsolvable, too)
     if np.max(abs(mut_dists_sc[active_pnts])) > 1:
-        raise FeasibilityError("Best measurements contain unphyiscal (lambda > 1) points")
+        raise FeasibilityError("Best measurements contain \
+                               unphyiscal (lambda > 1) points")
     
     
     ### actual solution process
     
-    # generate initial guess --> find most suitable 2 stations to put the initial 
-    # guess in between. This satisfies at least 1 differential range equation
-    # and should help convergences. Suitable means smallest TDOA small comparted
-    # to distance between the stations (means hyperbolic surfaces become more 
-    # planar)
+    # generate initial guess --> find most suitable 2 stations to put the 
+    # initial guess in between. This satisfies at least 1 differential range 
+    # equation and should help convergences. Suitable means smallest TDOA
+    # small comparted to distance between the stations (means hyperbolic 
+    # surfaces become more planar)
     x0_idx = np.where(abs(mut_dists_sc) == np.min(abs(mut_dists_sc)))[0][0]
-    x0 = N[mp[x0_idx,0]-1,:] + (0.5+mut_dists_sc[x0_idx]/2) * (N[mp[x0_idx,1]-1,:] - N[mp[x0_idx,0]-1,:])
-    """ previous attempts
-    #x0 = np.array([0,0,0])
-    #x0 = SP2CART(MR[MR.id == idx].lat.iloc[0], MR[MR.id == idx].long.iloc[0], MR[MR.id == idx].geoAlt.iloc[0])
-    #x0 = np.mean(N, axis=0)
-    #x0 = np.mean(N, axis=0) + SP2CART(lats[0], longs[0], -R0 + 1e4)
-    #x0 = np.mean( [ N[0,:], N[1,:], N[2,:] ], axis=0 )
-    """
+    x0 = N[mp[x0_idx, 0], :]\
+        + (0.5 + mut_dists_sc[x0_idx] / 2) \
+            * (N[mp[x0_idx, 1], :] - N[mp[x0_idx, 0], :])
     
     if solmode == 0:
         # Old fashioned NLLS
@@ -348,29 +336,34 @@ def NLLS_MLAT(MR, NR, idx, solmode = 1):
             
     elif solmode == 1:
         llsq_active = np.concatenate( (active_pnts, [True]) )
-        # use scipy's LSQ solver based on Levenberg-Marqart with custom Jacobian
-        # only solve at active_points
+        # use scipy's LSQ solver based on Levenberg-Marqart with custom 
+        # Jacobian only solve at active_points
         sol = sciop.least_squares(\
-            lambda x: np.array(fun(N, mp, x).T)[0][llsq_active] - b.T[0][llsq_active] * C0, \
+            lambda x: fun(N, mp, x)[llsq_active].T[0] - b[llsq_active] * C0, \
             x0, \
             jac=lambda x: np.array(Jac(N, mp, x)[llsq_active]), \
-            #method='dogbox', x_scale='jac', loss='linear', tr_solver='exact', \
-            #method='dogbox', x_scale='jac', loss='soft_l1', f_scale=1e4, tr_solver='exact', \
-            #method='dogbox', x_scale='jac', loss=lambda x: rho_alt(x, 1e0), f_scale=1e4, tr_solver='exact', \
-            method='lm', x_scale='jac', \
-            max_nfev=40, xtol=1e-8, gtol=1e-8, ftol=None, \
-            verbose=0)
+            #method = 'dogbox', x_scale = 'jac', \
+            #loss = lambda x: rho_alt(x, 1e0), f_scale = 1e4,\
+            #tr_solver = 'exact', \
+            method = 'lm', x_scale = 'jac', \
+            max_nfev = 200, xtol = 1e-8, gtol = 1e-8, \
+            verbose = 0)
         xn = sol.x
         
-        # yep, python is ridiculous... this selects to used stations and adds it to the dataframe
+        # this selects to used stations and adds it to the dataframe
+        if 'n_used' not in MR:
+            MR['n_used'] = ""
+            MR['n_used'] = MR['n_used'].astype(object)
+                
         try:
-            MR.n_used.loc[idx-1] = \
-                tuple(np.array(MR.loc[MR.id == idx, 'n'].to_numpy()[0])[np.unique(mp[active_pnts])-1])
+            MR.at[idx, 'n_used'] = \
+                tuple(np.array(MR.at[idx, 'n'])[np.unique(mp[active_pnts])])
         except IndexError:
             print("asdf")
             
-        MR.loc[MR.id == idx, "cost"] = sol.cost
-        MR.loc[MR.id == idx, "nfev"] = sol.nfev
+        # add some more
+        MR.at[idx, "cost"] = sol.cost
+        MR.at[idx, "nfev"] = sol.nfev
         
         if not sol.success or sol.cost > 2e6:
             raise ConvergenceError("Not happy with sciop.least_squares' deed")

@@ -89,10 +89,10 @@ def readNodes(filename):
     """
     
     # naive read
-    NR = pd.read_csv(filename, delimiter=',')
+    NR = pd.read_csv(filename, delimiter=',', index_col=0)
     
     #rename columns
-    NR = NR.rename(columns = {'serial':'n', 'latitude':'lat', 'longitude':'long', 'height':'geoAlt'})
+    NR = NR.rename(columns = {'latitude':'lat', 'longitude':'long', 'height':'geoAlt'})
     # id (1 through 2,074,193) | server time | aircraft | lat | long | baroAlt | geoAlt | numMeasurements | measurements | reciever Nodes | nano seconds gps time | RSSI
     # id | t | ac | lat | long | baroAlt | geoAlt | M | m | n | ms | R
         
@@ -116,12 +116,13 @@ def readSolutions(filename):
     """
     
     # naive read
-    SR = pd.read_csv(filename, delimiter=',')
+    SR = pd.read_csv(filename, delimiter=',', index_col=0)
     
     # rename columns
     SR = SR.rename(columns = {'latitude':'lat', 'longitude':'long', 'geoAltitude':'geoAlt'})
     
     return SR
+
 
 def segmentData(MR, use_SR, SR = None, K = 0, p = 0):
     """
@@ -151,7 +152,8 @@ def segmentData(MR, use_SR, SR = None, K = 0, p = 0):
     else: 
         # find datapoints with ground truth inside training set
         MR_GT = MR[~np.isnan(MR.lat)]
-        #id_GT = MR[~np.isnan(MR.lat)].id # where we have ground truth from training set
+        #id_GT = MR[~np.isnan(MR.lat)].id # where we have ground truth from 
+        #training set
         Mrows_GT = len(MR_GT)
         
         # get training and validation sets
@@ -159,14 +161,18 @@ def segmentData(MR, use_SR, SR = None, K = 0, p = 0):
         #                                          test_size=p*K/Mrows_GT, \
         #                                          train_size=K/Mrows_GT)
         
-        tra_idx = np.random.choice( MR_GT.id, size=K, replace=False )
-        val_idx = np.random.choice( tra_idx, size=int(K*p), replace=False )
+        tra_idx = np.random.choice(MR_GT.index,
+                                   size = K,
+                                   replace = False)
+        val_idx = np.random.choice(tra_idx,
+                                   size = int(K * p),
+                                   replace = False)
         
-        TRA = MR_GT.loc[np.in1d(MR_GT.id, tra_idx)].copy(deep=True)
-        VAL = MR_GT[['id', 'lat', 'long', 'geoAlt']].loc[np.in1d(MR_GT.id, val_idx)].copy(deep=True)
+        TRA = MR_GT.loc[tra_idx, :].copy()
+        VAL = MR_GT.loc[val_idx, ['lat', 'long', 'geoAlt']].copy()
         
         # NaN out the VAL lines in the training set:
-        TRA.loc[np.in1d(TRA.id, VAL.id), ['lat', 'long', 'geoAlt']] = np.nan
+        TRA.loc[val_idx, ['lat', 'long', 'geoAlt']] = np.nan
         
     return TRA, VAL
 
@@ -196,13 +202,29 @@ def insertFakeStations(NR, sph_pos):
     """
     
     # add fake stations
-    idx_end = NR.n.iloc[-1]
-    NR = NR.append({"n" : int(idx_end+1), "lat" : sph_pos[0,0],  "long" : sph_pos[0,1], "geoAlt" : sph_pos[0,2],  "type" : "Test 1"}, ignore_index=True)
-    NR = NR.append({"n" : int(idx_end+2), "lat" : sph_pos[1,0],  "long" : sph_pos[1,1], "geoAlt" : sph_pos[1,2],  "type" : "Test 2"}, ignore_index=True)
-    NR = NR.append({"n" : int(idx_end+3), "lat" : sph_pos[2,0],  "long" : sph_pos[2,1], "geoAlt" : sph_pos[2,2],  "type" : "Test 3"}, ignore_index=True)
-    NR = NR.append({"n" : int(idx_end+4), "lat" : sph_pos[3,0],  "long" : sph_pos[3,1], "geoAlt" : sph_pos[3,2],  "type" : "Test 4"}, ignore_index=True)
+    idx_start = NR.index[-1] + 1
+    NR.loc[idx_start + 0] = {"lat": sph_pos[0, 0], 
+                             "long": sph_pos[0, 1],
+                             "geoAlt": sph_pos[0, 2], 
+                             "type": "Test 1",
+                             }
+    NR.loc[idx_start + 1] = {"lat": sph_pos[1, 0], 
+                             "long": sph_pos[1, 1],
+                             "geoAlt": sph_pos[1, 2],
+                             "type": "Test 2",
+                             }
+    NR.loc[idx_start + 2] = {"lat": sph_pos[2, 0],
+                             "long": sph_pos[2, 1],
+                             "geoAlt": sph_pos[2, 2], 
+                             "type": "Test 3",
+                             }
+    NR.loc[idx_start + 3] = {"lat": sph_pos[3, 0],
+                             "long": sph_pos[3, 1],
+                             "geoAlt": sph_pos[3, 2],
+                             "type": "Test 4",
+                             }
 
-    return NR, np.arange(idx_end+1, idx_end+len(sph_pos)+1)
+    return NR, np.arange(idx_start, idx_start + len(sph_pos) - 1)
 
 
 def insertFakePlanes(MR, NR, sph_pos, n, noise_amp = 0):
@@ -230,28 +252,38 @@ def insertFakePlanes(MR, NR, sph_pos, n, noise_amp = 0):
     """
     global SP2CART, C0
     
+    start_idx = MR.index[-1] + 1
+    
     # convert nodes to cartesian for calculating TOAs
-    for idx in np.arange(len(n)):
+    for idx, nitem in enumerate(n):
         # get associated stations and convert to cartesian
-        node_sph  = NR[["lat", "long", "geoAlt"]][np.in1d(NR.n, n[idx])].to_numpy()
-        node_cart = SP2CART(node_sph[:,0], node_sph[:,1], node_sph[:,2]).T
+        node_sph  = np.array(NR.loc[nitem, ["lat", "long", "geoAlt"]])
+        node_cart = SP2CART(node_sph[:, 0], node_sph[:, 1], node_sph[:, 2]).T
         
         # convert plane location to cartesian
-        cart_loc = SP2CART(sph_pos[idx,0], sph_pos[idx,1], sph_pos[idx,2])
+        cart_loc = SP2CART(sph_pos[idx, 0], sph_pos[idx, 1], sph_pos[idx, 2])
         
         # find nanoseconds TOA (in this case equal to TOT, since no offset)
-        ns = la.norm(node_cart - cart_loc, axis=1)/C0*1e9
+        ns = la.norm(node_cart - cart_loc, axis = 1) / C0 * 1e9
         
         # add noise
-        ns = np.vectorize(int)(ns + (np.random.random( len(n[idx]) ) - 0.5)*2*noise_amp)
+        ns = np.vectorize(int)\
+            (ns + (np.random.random(len(nitem)) - 0.5) * 2 * noise_amp)
     
         # add fake plane
-        MR = MR.append({"id": int(1e7+1+idx), "t": 1e3-1, "ac": int(1e4-1),\
-                        "lat": sph_pos[idx,0], "long": sph_pos[idx,1],\
-                        "baroAlt": sph_pos[idx,2], "geoAlt": sph_pos[idx,2],\
-                        "M": int(len(n[idx])), "m": "N/A", "n": n[idx],\
-                        "ns": tuple(ns), "R": (0, 0, 0, 0)},\
-                       ignore_index=True)
+        MR.loc[start_idx + idx] = {
+            "t": 1e3 - 1, 
+            "ac": int(1e4 - 1),
+            "lat": sph_pos[idx, 0], 
+            "long": sph_pos[idx,1],
+            "baroAlt": sph_pos[idx, 2],
+            "geoAlt": sph_pos[idx, 2],
+            "M": int(len(nitem)),
+            "m": "N/A", 
+            "n": nitem,
+            "ns": tuple(ns), 
+            "R": (0, 0, 0, 0),
+            }
     
-    return MR, np.arange(1e7+1, 1e7+len(n)+1)
+    return MR, np.arange(start_idx, start_idx + idx)
 

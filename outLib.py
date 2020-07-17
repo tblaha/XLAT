@@ -39,21 +39,22 @@ def twoErrorCalc(x, z, RMSEnorm = 2):
     global R0, X, Y, Z
     
     # find the common indices (computed into x and preset in validation set z)
-    sol_idx_bool = np.in1d(x.id, z.id)
-    N = z.id.size
+    sol_idx_bool = np.in1d(x.index, z.index)
+    N = len(z.index)
     
     # get lat and longs and ground truth geo height
-    lat_x  = np.array(x[sol_idx_bool].lat)
-    long_x = np.array(x[sol_idx_bool].long)
-    lat_z  = np.array(z.lat)
-    long_z = np.array(z.long)
-    h_z    = np.array(z.geoAlt)
+    lat_x, long_x  = \
+        np.array(x.loc[sol_idx_bool, ['lat', 'long']]).T
+    lat_z, long_z, h_z  = \
+        np.array(z.loc[sol_idx_bool, ['lat', 'long', 'geoAlt']]).T
     
     # compute great circle distances ("2d" error) between guess and truth
     norm_vec = np.zeros([1, N])
     for i in range(N):
         try:
-            norm_vec[0,i] = gc((lat_x[i], long_x[i]), (lat_z[i], long_z[i])).meters * (R0+h_z[i])/R0
+            norm_vec[0,i] = gc((lat_x[i], long_x[i]), 
+                               (lat_z[i], long_z[i])).meters\
+                                * (R0+h_z[i])/R0
             if np.isnan(norm_vec[0,i]):# or norm_vec[0,i] > 2e5:
                 norm_vec[0,i] = 0
                 N = N - 1
@@ -89,21 +90,26 @@ def threeErrorCalc(x, z, RMSEnorm = 2, pnorm = 2):
     """
     global R0, X, Y, Z
     
-    # find the common indices (computed into x and preset in validation set z)
-    sol_idx_bool = np.in1d(x.id, z.id)
-    N = z.id.size
+     # find the common indices (computed into x and preset in validation set z)
+    sol_idx_bool = np.in1d(x.index, z.index)
+    N = len(z.index)
     
-    # get lat and longs and geo heights
-    lat_x  = np.array(x[sol_idx_bool].lat)
-    long_x = np.array(x[sol_idx_bool].long)
-    h_x    = np.array(x[sol_idx_bool].geoAlt)
-    lat_z  = np.array(z.lat)
-    long_z = np.array(z.long)
-    h_z    = np.array(z.geoAlt)
+    # get lat and longs and ground truth geo height
+    lat_x, long_x, h_x  = \
+        np.array(x.loc[sol_idx_bool, ['lat', 'long', 'geoAlt']]).T
+        
+    lat_z, long_z, h_z  = \
+        np.array(z.loc[sol_idx_bool, ['lat', 'long', 'geoAlt']]).T
     
     # convert to cartesian
-    cart_x = [X(lat_x, long_x, h_x), Y(lat_x, long_x, h_x), Z(lat_x, long_x, h_x)]
-    cart_z = [X(lat_z, long_z, h_z), Y(lat_z, long_z, h_z), Z(lat_z, long_z, h_z)]
+    cart_x = [X(lat_x, long_x, h_x), 
+              Y(lat_x, long_x, h_x), 
+              Z(lat_x, long_x, h_x)
+              ]
+    cart_z = [X(lat_z, long_z, h_z), 
+              Y(lat_z, long_z, h_z), 
+              Z(lat_z, long_z, h_z)
+              ]
     
     # calculate norms
     norm_vec = la.norm(np.array(cart_z) - np.array(cart_x), pnorm, 0)
@@ -131,9 +137,9 @@ def writeSolutions(filename, z):
         DESCRIPTION.
 
     """
-    zz = z.copy(deep=True)
-    zz.columns = ['id','latitude','longitude','geoAltitude']
-    zz.to_csv(filename, index = False, \
+    zz = z.copy()
+    zz.columns = ['latitude','longitude','geoAltitude']
+    zz.to_csv(filename, index = True, index_label = 'id',
               na_rep = 'NaN') # not-a-number string
     
     return 0
@@ -141,16 +147,16 @@ def writeSolutions(filename, z):
 
 class PlanePlot():
     """
-    Handles plotting of planes, tracks, stations and other points on a political
-    world map
+    Handles plotting of planes, tracks, stations and other points on a 
+    political world map
     """
     def __init__(self):
         """
         Generate initial plot window with the political map
         """
         self.fig = plt.figure(figsize=(15,8))
-        self.ax  = self.fig.add_subplot(1,1,1, projection=ccrs.Robinson())
-        
+        #self.ax  = self.fig.add_subplot(1,1,1, projection=ccrs.Robinson())
+        self.ax  = self.fig.add_subplot(1,1,1, projection=ccrs.PlateCarree())
         self.extent = [-180, 180, -75, 75];
         self.start_extent = True
         
@@ -168,6 +174,9 @@ class PlanePlot():
         self.ax.add_feature(cfeature.BORDERS.with_scale('50m'), linestyle='--')
         self.ax.add_feature(cfeature.LAND.with_scale('50m'))
         self.ax.add_feature(cfeature.OCEAN.with_scale('50m'))
+        
+        
+        self.ax.gridlines(draw_labels=True)
         
     def __del__(self):
         """
@@ -200,13 +209,23 @@ class PlanePlot():
         """
         
         for c in ac:
-            cur_id = x[x.ac == c].id
-            self.updateExtent(x[x.ac == c].long, x[x.ac == c].lat)
-            self.ax.plot(x[x.ac == c].long, x[x.ac == c].lat, transform=ccrs.Geodetic())
+            cur_id = x.loc[x.ac == c].index
+            self.updateExtent(x.loc[x.ac == c, 'long'], 
+                              x.loc[x.ac == c, 'lat']
+                              )
+            self.ax.plot(x.loc[x.ac == c, 'long'],
+                         x.loc[x.ac == c, 'lat'], 
+                         transform=ccrs.Geodetic()
+                         )
             
             if (z is not None):
-                self.ax.plot(z[np.in1d(z.id, cur_id)].long, z[np.in1d(z.id, cur_id)].lat, transform=ccrs.Geodetic())
-                self.updateExtent(z[np.in1d(z.id, cur_id)].long, z[np.in1d(z.id, cur_id)].lat)
+                self.ax.plot(z.loc[cur_id, 'long'], 
+                             z.loc[cur_id, 'lat'], 
+                             transform=ccrs.Geodetic()
+                             )
+                self.updateExtent(z.loc[cur_id, 'long'], 
+                                  z.loc[cur_id, 'lat']
+                                  )
                    
     def addPoint(self, x, id, z = None):
         """
@@ -226,15 +245,28 @@ class PlanePlot():
         None.
         
         """
-        self.updateExtent(x[np.in1d(x.id, id)].long, x[np.in1d(x.id, id)].lat)
+        self.updateExtent(x.loc[id, 'long'], 
+                          x.loc[id, 'lat']
+                          )
+        
         if z is not None:
-            self.updateExtent(z[np.in1d(z.id, id)].long, z[np.in1d(z.id, id)].lat)
+            self.updateExtent(z.loc[id, 'long'], 
+                              z.loc[id, 'lat']
+                              )
         
         for c in id:
-            self.ax.plot(x[x.id == c].long, x[x.id == c].lat, 'o', transform=ccrs.Geodetic())
+            self.ax.plot(x.loc[id, 'long'], 
+                         x.loc[id, 'lat'],
+                         's', 
+                         transform=ccrs.Geodetic()
+                         )
             
             if z is not None:
-                self.ax.plot(z[z.id == c].long, z[z.id == c].lat, 'o', transform=ccrs.Geodetic())
+                self.ax.plot(z.loc[id, 'long'], 
+                             z.loc[id, 'lat'],
+                             's', 
+                             transform=ccrs.Geodetic()
+                             )
                 
     def addPointByCoords(self, sp):
         """
@@ -254,7 +286,7 @@ class PlanePlot():
         self.updateExtent(sp.T[1], sp.T[0])
         
         for lat,long in sp:
-            self.ax.plot(long, lat, '+', transform=ccrs.Geodetic())
+            self.ax.plot(long, lat, 'o', transform=ccrs.Geodetic())
                 
     def addNode(self, nodes, ns):
         """
@@ -274,8 +306,14 @@ class PlanePlot():
         """
         
         for n in ns:
-            self.updateExtent(nodes[nodes.n == n].long, nodes[nodes.n == n].lat)
-            self.ax.plot(nodes[nodes.n == n].long, nodes[nodes.n == n].lat, 'x', transform=ccrs.Geodetic())
+            self.updateExtent(nodes.at[n, 'long'],
+                              nodes.at[n, 'lat']
+                              )
+            self.ax.plot(nodes.at[n, 'long'],
+                         nodes.at[n, 'lat'], 
+                         '^', 
+                         transform=ccrs.Geodetic()
+                         )
         
     def addNodeById(self, nodes, x, id):
         """
@@ -288,6 +326,7 @@ class PlanePlot():
             The stations dataframe.
         x : pd.DataFrame
             Measurements. contains plane location info.
+        id : measurement id
 
         Returns
         -------
@@ -296,10 +335,16 @@ class PlanePlot():
         """
         
         for c in id:
-            tmp = np.array(x[x.id == c].n)
-            for n in tmp[0]:
-                self.updateExtent(nodes[nodes.n == n].long, nodes[nodes.n == n].lat)
-                self.ax.plot(nodes[nodes.n == n].long, nodes[nodes.n == n].lat, 'x', transform=ccrs.Geodetic())
+            tmp = np.array(x.at[c, 'n'])
+            for n in tmp:
+                self.updateExtent(nodes.at[n, 'long'],
+                                  nodes.at[n, 'lat']
+                                  )
+                self.ax.plot(nodes.at[n, 'long'],
+                             nodes.at[n, 'lat'], 
+                             '^', 
+                             transform=ccrs.Geodetic()
+                             )
         
     def updateExtent(self, longs, lats):
         """
@@ -325,17 +370,23 @@ class PlanePlot():
             print("NaN")
             return 1
         
-        # suppose the new extend based on the longs and lats passed to this function:
-        new_extent_raw = np.array([np.min(longs), np.max(longs), np.min(lats), np.max(lats)])
+        # suppose the new extend based on the longs and lats passed to this 
+        # function:
+        new_extent_raw = np.array([np.min(longs), 
+                                   np.max(longs), 
+                                   np.min(lats), 
+                                   np.max(lats)
+                                   ])
         
         # see if this was the first time this function is called
         if not self.start_extent:
             # if not the first time: update only if it is actually bigger or 
             # smaller than the already existing extent
-            new_extent     =[np.min( [ new_extent_raw[0]-1, self.extent[0] ] ), \
-                             np.max( [ new_extent_raw[1]+1, self.extent[1] ] ), \
-                             np.min( [ new_extent_raw[2]-1, self.extent[2] ] ), \
-                             np.max( [ new_extent_raw[3]+1, self.extent[3] ] )]
+            new_extent     =[np.min([new_extent_raw[0] - 1, self.extent[0]]),\
+                             np.max([new_extent_raw[1] + 1, self.extent[1]]),\
+                             np.min([new_extent_raw[2] - 1, self.extent[2]]),\
+                             np.max([new_extent_raw[3] + 1, self.extent[3]])
+                             ]
             self.extent    = new_extent
                 
         else:

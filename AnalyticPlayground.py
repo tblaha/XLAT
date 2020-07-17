@@ -137,7 +137,6 @@ for (i1, i2) in mp:
 
 
 
-
 ## Quadratic Equation
 #Q = lambda x, P, D, b, sig: ( ( ( (x - b) @ P @ D @ P.T @ (x.T - b.T) ) - 1) * (1 if ((x - b) @ P[:,0] * sig < 0) else -1) )
 #Q = lambda x, P, D, b: x @ D @ x.T + V[:,0] @ x
@@ -153,7 +152,12 @@ N  = np.array([[0,0,1], [0,0,-1], [0,1,0], [1,0,0], [0,-1,0]])
 x_GT = np.array([0,0,-0.3]) + 0.1*np.random.random(3) * np.array([1,1,1])
 Rs = la.norm(x_GT - N, axis=1)+ 0.001*np.random.random(5)
 
-
+N  = np.array([[0,0,1], [0,0,-1], [0,1,0]])
+#N  = np.array([[0,0,1], [0,0,-1], [0,1,0], [1,0,0], [0,-1,0]])
+n  = len(N)
+x_GT = np.array([0,0,-0.3])# + 0.1*np.random.random(3) * np.array([1,1,1])
+Rs = la.norm(x_GT - N, axis=1)#+ 0.001*np.random.random(n)
+mp = np.array([[i,j] for i in range(n) for j in range(i+1,n)])
 
 def MetaQ(x0, N, Rs):
     
@@ -188,14 +192,15 @@ def MetaQ(x0, N, Rs):
     # shortcuts for matrix
     lm = (Rd - RD)**2
     phim = lm / (2*Rd)
-    lp = (Rd + RD)**2
-    phip = lp / (2*Rd)
+    #lp = (Rd + RD)**2
+    #phip = lp / (2*Rd)
     
     # matrix for coefficient computation
     N = np.zeros([dim, 2, 2])
     N[:,:,:] = np.array([np.array([[ (RD[i]/2)**2, 0],\
-                                   #[ (Rd[i]/2 - phim[i])**2, -phim[i]**2 + lm[i]]\
-                                   [ (Rd[i]/2 - phip[i])**2, -phip[i]**2 + lp[i]]])\
+                                   [ (Rd[i]/2 - phim[i])**2, -phim[i]**2 + lm[i]]\
+                                   #[ (Rd[i]/2 - phip[i])**2, -phip[i]**2 + lp[i]]
+                                       ])\
                          for i in range(dim)] )
     
     # compute coefficients by solving linear system; assuming target contour 
@@ -220,21 +225,22 @@ def MetaQ(x0, N, Rs):
     
     # quadratic form F = x^T A x  - 1; but swapping sign to capture the "correct"
     # side of the hyperbolic
-    def FJ(x, mode="F"):
+    def FJ(x, mode=0):
         sign_cond = np.array( [(np.dot((x - b[i]), V[i,:,0]) * sig[i] < 0) for i in range(dim)] )
         swapsign, add = zip(*[((1,1) if cond else (-1,0)) for cond in sign_cond])
         
-        if mode == "F":
+        if mode == 0:
             R = np.array( [ \
                    ( ( np.dot((x - b[i]), np.dot(A[i,:,:], (x.T - b[i].T) ) ) ) \
                     * 1) * swapsign[i] + 0*add[i] - 1\
                     for i in range(dim)] )
-        elif mode == "J":
+        elif mode == 1:
             R = np.array( [ \
                    ( np.dot(A[i,:,:], (x - b[i]) ) ) \
                     * 1 + 0*swapsign[i]\
                 for i in range(dim)] )
         return R
+    
     """
     F   = lambda x: np.array( [\
                     ( ( np.dot((x - b[i]), np.dot(A[i,:,:], (x.T - b[i].T) ) ) ) \
@@ -252,7 +258,7 @@ def MetaQ(x0, N, Rs):
         
     ### finally, solve...
     
-    xsol = sciop.least_squares(lambda x: FJ(x, "F"), x0)#, jac = J)#, method='lm', xtol=1e-8, x_scale='jac')
+    xsol = sciop.least_squares(lambda x: FJ(x, 0), x0, method='dogbox')#, jac = J)#, method='lm', xtol=1e-8, x_scale='jac')
     
     # record results
     xn = xsol.x
@@ -272,7 +278,7 @@ timestart = time.time()
 n_trials = 100
 xn = np.zeros([n_trials, 3])
 for idx in range(n_trials):
-    xn[idx,:], fvalfinal, FJ = MetaQ(np.array([0,idx*0.01,idx*0.01]), N, Rs)
+    xn[idx,:], fvalfinal, FJ = MetaQ(np.array([0,-idx*0.01,-idx*0.01]), N, Rs)
 timeend = time.time()
 
 
@@ -298,7 +304,7 @@ for i in np.arange(n_vals):
     for j in np.arange(n_vals):
         for k in np.arange(n_vals):
             xvec = np.array([x[i,0,0], y[0,j,0], z[0,0,k]])
-            F[:, i,j,k] = FJ(xvec, "F")
+            F[:, i,j,k] = FJ(xvec, 0)
 
 n_vals = 20
 xj, yj, zj = np.mgrid[-3:3:n_vals*1j,\
@@ -313,7 +319,7 @@ for i in np.arange(n_vals):
     for j in np.arange(n_vals):
         for k in np.arange(n_vals):
             xvec = np.array([xj[i,0,0], yj[0,j,0], zj[0,0,k]])
-            J[:, :, i,j,k] = FJ(xvec, "J")
+            J[:, :, i,j,k] = FJ(xvec, 1)
 
 ## plottare
 mlab.close(all=True)

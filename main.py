@@ -31,12 +31,14 @@ import time
 
 import sklearn.model_selection as sklms
 
+import tqdm
+
 
 
 
 ###import and pre-process
 use_pickle = False
-use_files  = 1 # -1 --> competition; 1 through 7 --> training
+use_files  =  7 # -1 --> competition; 1 through 7 --> training
 
 if use_files == -1:
     path    = "../Data/round1_competition"
@@ -75,7 +77,7 @@ else:
 
 
 
-print("Finished importing data")
+print("Finished importing data\n")
 
 
 
@@ -85,14 +87,14 @@ print("Finished importing data")
 # or
 # select random data points with GT from MR set
 np.random.seed(1)
-use_SR = False
+use_SR = True
 K      = 10000 # how many data points to read out of the millions and use for validation
 p_vali = 0.05 # share of K used for validation
 
 TRA, VAL = rlib.segmentData(MR, use_SR, SR, K = K, p = p_vali)
 
-
-"""### fakes for debugging
+"""
+### fakes for debugging
 # fake nodes
 node_sph = np.array([[50 ,11, 0],\
                      [50 ,9, 0],\
@@ -109,45 +111,50 @@ plane_n   =           [tuple(idx_fake_n), tuple(idx_fake_n)]
 TRA, idx_fake_planes = rlib.insertFakePlanes(TRA, NR, np.array([[1,2,3], [2,3,4]]), [(523,), (522,523)], noise_amp = 10)
 """
 
-""" ### single plane stuff
+"""
+### single plane stuff
 # select measurement to compute stuff for
 #seek_id = 9999999 # fake plane
-seek_id = MR.iloc[15].id # some actually existing plane
+seek_id = 1169065 # some actually existing plane
 
 # start MLAT calculations
-c, found_loc, fval = ml.NLLS_MLAT(MR,NR,seek_id)
+c, found_loc, fval = ml.NLLS_MLAT(MR, NR, seek_id)
 
 # print result
-print(np.array([found_loc,[MR[MR.id == seek_id].lat.iloc[0],\
-                MR[MR.id == seek_id].long.iloc[0],\
-                MR[MR.id == seek_id].geoAlt.iloc[0]] ]))
+print(np.array([found_loc,
+                [MR.at[seek_id, 'lat'],
+                 MR.at[seek_id, 'long'],
+                 MR.at[seek_id, 'geoAlt']
+                 ]
+                ]))
 
 # plotting
 pp = olib.PlanePlot()
 pp.addPoint(MR, [seek_id])
 pp.addPointByCoords(np.array([found_loc[0:2]]))
 pp.addNodeById(NR, MR, [seek_id])
-#olib.writeSolutions("../training_1_round_1_result/test_out.csv", SR)
-
+pp.addTrack(MR, [MR.at[seek_id, 'ac']])
+olib.writeSolutions("./test_out.csv", SR)
 """
+
 
 # initialise solution dataframe
 SOL = VAL.copy(deep=True)
 SOL[["lat", "long", "geoAlt"]] = np.nan
 
-TRA['n_used'] = ""
-TRA['n_used'] = TRA['n_used'].astype(object)
+
 
 
 t = time.time()
 interv = 250
-counter = 0
+counter = 1
+maxcount = len(SOL)
 #pr = cProfile.Profile()
 #pr.enable()
-for idx in SOL.id:
+for idx in tqdm(SOL.index):
     try:
         xn, xn_sph, fval = ml.NLLS_MLAT(TRA, NR, idx, solmode = 1)
-        SOL.loc[SOL.id == idx, ["lat", "long", "geoAlt"]] = xn_sph
+        SOL.loc[idx, ["lat", "long", "geoAlt"]] = xn_sph
         
     except (ml.FeasibilityError, ml.ConvergenceError):
         #xn     = np.array([-1, -1, -1])
@@ -156,32 +163,23 @@ for idx in SOL.id:
         pass
     
     if not counter%interv:
-        print("current id:", idx, " of ", max(SOL.id), ": %.2f %%" % (idx/max(SOL.id)*100) )
+        print("current count:", counter, " of ", maxcount, ": %.2f %%" % (counter/maxcount*100) )
         cur_time = time.time() - t
-        print("Estimated time to go: %d" % (cur_time/(idx/max(SOL.id)) - cur_time) )
+        print("Estimated time to go: %d" % (cur_time/(counter/maxcount) - cur_time) )
     
     counter = counter + 1
     
 el = time.time() - t
-print(el)
+print("\nTime taken: %f sec\n"%el)
 
 
 #pr.disable()
 
-#olib.writeSolutions("../comp1_.csv", SOL)
+olib.writeSolutions("../Training7_.csv", SOL)
 RMSE, nv = olib.twoErrorCalc(SOL, VAL, RMSEnorm = 2)
 
+TRA.loc[VAL.index, "NormError"] = nv[0]
+SEL = TRA.loc[~np.isnan(TRA.NormError) & TRA.NormError >= 3000].sort_values(by="NormError", ascending=True)
 
-
-TRA.loc[np.in1d(TRA.id, VAL.id), "NormError"] = nv[0]
-SEL = TRA[~np.isnan(TRA.NormError) * TRA.NormError >= 3000].sort_values(by="NormError", ascending=True)
-
-
-#pr.disable()
-#pr.print_stats()
-
-# s = io.StringIO()
-# sortby = SortKey.CUMULATIVE
-# ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-# ps.print_stats()
-# print('\n'.join(s.getvalue().split('\n')[0:100]))
+print(RMSE)
+print(100*sum( (nv > 0)[0] ) / maxcount)
