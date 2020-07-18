@@ -15,7 +15,7 @@ import pandas as pd
 
 import readLib as rlib
 import outLib as olib
-import MLAT as ml
+import MLAT_hyp as ml
 
 import os
 import time
@@ -26,39 +26,14 @@ if False:
     from IPython import get_ipython
     get_ipython().magic('reset -sf')
 
+
 # ### import and pre-process
 use_pickle = True
-use_files = 7  # -1 --> competition; 1 through 7 --> training
+use_file = 1  # -1 --> competition; 1 through 7 --> training
 
-if use_files == -1:
-    path = "../Data/round1_competition"
-    fnameMR = "round1_competition.csv"
-    fnameSR = "round1_sample_empty.csv"
-elif use_files > 0:
-    path = "../Data/training_"+str(use_files)+"_category_1"
-    fnameMR = "training_"+str(use_files)+"_category_1.csv"
-    fnameSR = "training_"+str(use_files)+"_category_1_result.csv"
+MR, NR, SR = rlib.importData(use_pickle, use_file)
+# print("Finished importing data\n")
 
-# read csv files
-if os.path.isfile("./MR.pkl") and use_pickle:
-    MR = pd.read_pickle("./MR.pkl")
-else:
-    MR = rlib.readMeasurements(path+"/"+fnameMR)
-    MR.to_pickle("./MR.pkl")
-
-if os.path.isfile("./NR.pkl") and use_pickle:
-    NR = pd.read_pickle("./NR.pkl")
-else:
-    NR = rlib.readNodes(path+"/sensors.csv")
-    NR.to_pickle("./NR.pkl")
-
-if os.path.isfile("./SR.pkl") and use_pickle:
-    SR = pd.read_pickle("./SR.pkl")
-else:
-    SR = rlib.readSolutions(path+"_result/"+fnameSR)
-    SR.to_pickle("./SR.pkl")
-
-print("Finished importing data\n")
 
 # use separate SR file for validation
 # or
@@ -69,6 +44,8 @@ K = 10000  # how many data points to read and use for validation
 p_vali = 0.05  # share of K used for validation
 
 TRA, VAL = rlib.segmentData(MR, use_SR, SR, K=K, p=p_vali)
+
+
 
 """
 ### fakes for debugging
@@ -91,11 +68,11 @@ TRA, idx_fake_planes = rlib.insertFakePlanes(TRA, NR,
                                              noise_amp = 10)
 """
 
-"""
+
 ### single plane stuff
 # select measurement to compute stuff for
 #seek_id = 9999999 # fake plane
-seek_id = 1169065 # some actually existing plane
+seek_id = 1141465 # some actually existing plane
 
 # start MLAT calculations
 c, found_loc, fval = ml.NLLS_MLAT(MR, NR, seek_id)
@@ -113,8 +90,9 @@ pp = olib.PlanePlot()
 pp.addPoint(MR, [seek_id])
 pp.addPointByCoords(np.array([found_loc[0:2]]))
 pp.addNodeById(NR, MR, [seek_id])
-pp.addTrack(MR, [MR.at[seek_id, 'ac']])
+#pp.addTrack(MR, [MR.at[seek_id, 'ac']])
 olib.writeSolutions("./test_out.csv", SR)
+
 """
 
 # initialise solution dataframe
@@ -149,8 +127,9 @@ olib.writeSolutions("../Training7_9e68d8.csv", SOL)
 RMSE, nv = olib.twoErrorCalc(SOL, VAL, RMSEnorm=2)
 
 TRA.loc[VAL.index, "NormError"] = nv
-SEL = TRA.loc[~np.isnan(TRA.NormError) & TRA.NormError >= 3000]\
+SEL = TRA.loc[~np.isnan(TRA.NormError)]\
     .sort_values(by="NormError", ascending=True)
 
 print(RMSE)
 print(100*sum(nv > 0) / maxcount)
+"""

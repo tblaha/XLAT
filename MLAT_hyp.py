@@ -143,9 +143,10 @@ def FJ(x, A, b, dim, V, sig, mode=0):
     if mode == 0:
         # compute function including the sign swapping
         Ret = np.array([
-                        (np.dot((x - b[i]),
+                        (((np.dot((x - b[i]),
                                 np.dot(A[i, :, :], (x.T - b[i].T)))
-                         * swapsign[i] - 1
+                         + 0*swapsign[i] - 1)**2)**(0.5)
+                         - flip[i] * np.dot((x - b[i]), V[i, :, 0])*25
                          ) for i in range(dim)
                         ])
     elif mode == 1:
@@ -237,8 +238,8 @@ def MetaQ(N, mp, Rs, rho_baro=-1):
     # ### solve and record
     xsol = sciop.least_squares(lambda x: 
                     FJ(x, A, b, dim, V, RDsi, mode=0),
-                    x0, method='lm', x_scale='jac'
-                    )
+                    x0, method='trf', x_scale='jac',
+                    verbose=2)
     # xsol = sciop.least_squares(lambda x: FJ(x, A, b, dim, V, RDsi, mode=0),
     #                     x0, method='lm', x_scale='jac',\
     #                     jac = lambda x: FJ(x, A, b, dim, V, RDsi, mode = 1)
