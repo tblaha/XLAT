@@ -12,18 +12,14 @@ import scipy.optimize as sciop
 import scipy.linalg as sla
 
 
-class FeasibilityError(Exception):
-    """Raised when calculation not feasibe"""
-    # 1. not enough stations
-    # 2. best measurements still unphysical
+class MLATError(Exception):
+    def __init__(self, code):
+        self.code = code
 
-    pass
+    def __str__(self):
+        return repr(self.code)
 
 
-class ConvergenceError(Exception):
-    """Raised when iterative procedure failes to converge"""
-
-    pass
 
 
 def iterx(N, T, xn):
@@ -99,7 +95,7 @@ def getHyperbolic(N, mp, dim, RD, R, Rd):
             ABB[i, 2] = ABB[i, 1]
         except la.LinAlgError:
             ABB[i] = np.array([1, 0, 0])
-    
+
     # diagonal matrix for correct scaling of the eigenvectors
     D = np.zeros([dim, 3, 3])
     D[:, :, :] = np.array([np.diag(ABB[i, :])
@@ -130,7 +126,8 @@ def getSphere(rho_baro):
     return A, V, D, b
 
 
-def FJ(x, A, b, dim, V, sig, mode=0):
+def FJ(x, A, b, dim, V, RD, mode=0):
+    sig = np.sign(RD)
 
     # discriminant for the sign flip
     sign_cond = np.array([(np.dot((x - b[i]), V[i, :, 0]) * sig[i] < 0)
@@ -142,44 +139,120 @@ def FJ(x, A, b, dim, V, sig, mode=0):
 
     if mode == 0:
         # compute function including the sign swapping
+        # Ret = np.array([
+        #     (((np.dot((x - b[i]),
+        #               np.dot(A[i, :, :], (x.T - b[i].T)))
+        #        + 0*swapsign[i] - 1)**2)**(0.5)
+        #      - flip[i] * np.dot((x - b[i]), V[i, :, 0])*25
+        #      ) for i in range(dim)
+        #     ])
         Ret = np.array([
-                        (((np.dot((x - b[i]),
-                                np.dot(A[i, :, :], (x.T - b[i].T)))
-                         + 0*swapsign[i] - 1)**2)**(0.5)
-                         - flip[i] * np.dot((x - b[i]), V[i, :, 0])*25
-                         ) for i in range(dim)
-                        ])
+            ((np.dot((x - b[i]),
+                      np.dot(A[i, :, :], (x.T - b[i].T)))
+               +0* swapsign[i] - 1)
+             ) for i in range(dim)
+            ])
     elif mode == 1:
         # compute Jacobian with the v1 compunent mirroring
-        delta = np.array([
-                          np.dot(A[i, :, :], (x - b[i]))
-                          for i in range(dim)
-                          ])
-        Ret = delta - 2 * np.array(
-            [flip[i] * np.dot(delta[i], V[i, :, 0]) * V[i, :, 0]
-             for i in range(dim)
-             ])
-    else:
-        raise RuntimeError("mode must be one of 0 or 1 for fun or jacobian")
-
+        # delta = np.array([
+        #                   np.dot(A[i, :, :], (x - b[i]))
+        #                   for i in range(dim)
+        #                   ])
+        # Ret = delta - 2 * np.array(
+        #     [flip[i] * np.dot(delta[i], V[i, :, 0]) * V[i, :, 0]
+        #      for i in range(dim)
+        #      ])
+        Ret = np.array([2 * np.dot(A[i, :, :], (x - b[i])) 
+                        for i in range(dim)
+                        ])
     return Ret
 
 
-def SelectMeasurements(RD_sc, Kmin):
-    # determine usable measurements
-    m_use = (abs(RD_sc) <= 0.99)
+def FJsq(x, A, b, dim, V, RD, mode=0):
+    f = np.array([  # (x-b)A(x-b)^T - 1)
+        (np.dot((x - b[i]), np.dot(A[i, :, :], (x.T - b[i].T))) - 1)
+        for i in range(dim)
+        ])
+    q = np.array([  # 2 * (x-b)A
+        2 * np.dot(x - b[i], A[i, :, :])
+        for i in range(dim)
+        ])
+    p = 8 * np.sign(RD) / (np.abs(RD) + 1e-12)  # looks stupid, is robust
+    d = np.array([
+        np.dot((x - b[i]),  V[i, :, 0])
+        for i in range(dim)
+        ])
+    
+    cond = (f > 0) & (d * p > 0)
+    flip = [-1 if c else 1 for c in cond]
+    mcc = lambda x: np.heaviside(x, 0) * x
+    
+    ftilde = f * flip - mcc(d * p)
+    qtilde = (q - mcc(p * V[:, :, 0].T).T)
+    qtilde = q
+    
+    if mode == -1:
+        Ret = ftilde
+    elif mode == 0:
+        Ret = 0.5*np.sum(ftilde**2)
+    elif mode == 1:
+        Ret = np.sum((ftilde * qtilde.T).T,
+                     axis=0)
+    elif mode == 2:
+        Ret = 4 * np.sum(np.array([
+            0.5 * ftilde[i] * A[i, :, :] 
+            + np.matrix(qtilde[i]).T @ np.matrix(qtilde[i])
+            for i in range(dim)
+            ]), axis=0)
+    
+    return Ret
 
-    # error if not enough
-    if sum(m_use) < Kmin:
-        raise FeasibilityError("Not enough phyiscal\
-                               (lambda < 0.99) measurements available")
 
-    return m_use
+""" vanilla quadratic form including jacobian and hessian
+def FJsq(x, A, b, dim, V, RD, mode=0):
+    sig = np.sign(RD)
+    if mode == 0:
+        Ret = np.sum(0.5*np.array([
+             (np.dot((x - b[i]), np.dot(A[i, :, :], (x.T - b[i].T))) - 1)**2
+              for i in range(dim)
+             ]))
+    elif mode == 1:
+        Ret = np.sum(np.array([
+            (np.dot((x - b[i]), np.dot(A[i, :, :], (x.T - b[i].T))) - 1)
+            * (2 * np.dot(A[i, :, :], (x - b[i])))
+            for i in range(dim)
+            ]), axis=0)
+    elif mode == 2:
+        Ret = np.sum(np.array([
+             (np.dot((x - b[i]), np.dot(A[i, :, :], (x.T - b[i].T))) - 1)
+             * 2 * A[i, :, :]
+             + 4 * np.cross(np.dot(A[i, :, :], x - b[i]),
+                            np.dot(x - b[i], A[i, :, :])
+                            )
+              for i in range(dim)
+             ]), axis=0)
+    return Ret
+"""
 
 
-def MetaQ(N, mp, Rs, rho_baro=-1):
+def CON(x, C, mode=0):
+    # value. jacobian or hessian of the constraint
+    if mode == 0:
+        sol = x @ C @ x
+    elif mode == 1:
+        sol = 2 * (C @ x)
+    elif mode == 2:
+        sol = 2 * C
+
+    return sol
+
+
+def GenMeasurements(N, n, Rs):
 
     # ### pre-process data ###
+    # mapping of the stations to the differences
+    mp = np.array([[i, j] for i in range(n) for j in range(i+1, n)])
+
     # range differences RD (equivalent to TDOA)
     RD = (Rs[mp[:, 1]] - Rs[mp[:, 0]])  # meters
 
@@ -187,13 +260,24 @@ def MetaQ(N, mp, Rs, rho_baro=-1):
     R = (N[mp[:, 1]] - N[mp[:, 0]])
     Rn = la.norm(R, axis=1)
 
-    # do we have a baro altitude to use?
-    use_baro = (rho_baro > 0)
-
-    # ### check quality of measurements and discard accordingly
-    # scale measurement to distance between stations
+    # Scaled measurements
     RD_sc = RD/Rn
-    m_use = SelectMeasurements(RD_sc, 3 - int(use_baro))
+
+    # determine usable measurements
+    m_use = ((abs(RD_sc) <= 0.99)
+             & (abs(Rn) > 2000)
+             )
+
+    # error if not enough stations left
+    Kmin = 3
+    if len(RD_sc) < Kmin:
+        raise MLATError(1)
+        # raise MLATError("Not enough measurements available")
+    elif sum(m_use) < Kmin:
+        # raise FeasibilityError("Not enough phyiscal (lambda < 0.99) or \
+        #                        usable (R_stations < 1km) measurements \
+        #                        available")
+        raise MLATError(2)
 
     # update all vectors
     mp = mp[m_use]
@@ -202,59 +286,110 @@ def MetaQ(N, mp, Rs, rho_baro=-1):
     Rn = Rn[m_use]
     RD_sc = RD_sc[m_use]
 
-    # little helper for discriminating between solutions later on
-    RDsi = np.sign(RD)  # don't think it's necessary anymore
+    return mp, RD, R, Rn, RD_sc
+
+
+def genx0(N, mp, RD_sc, rho_baro):
+    # find index of most "central" measurement (least difference of Range
+    # difference relative to station distance)
+    x0_idx = np.where(abs(RD_sc) == np.min(abs(RD_sc)))[0][0]
+
+    # find the x0 as the position on the line between those 2 stations that
+    # also satisfies the hyperbola
+    x0 = N[mp[x0_idx, 0], :] + \
+        (0.5 + RD_sc[x0_idx] / 2) * (N[mp[x0_idx, 1], :] - N[mp[x0_idx, 0], :])
+
+    if rho_baro > 0:
+        std_mean = np.mean(N, axis=0)
+        x0 = std_mean / la.norm(std_mean) * rho_baro
+    
+    return x0
+
+
+def CheckResult(sol, dim):
+    # solver didn't converge
+    if not sol.success:
+        raise MLATError(30 + sol.status)
+    # if sol.optimality > 1:
+    #     raise MLATError(4)
+    # if sol.cost > 1:
+    #     raise MLATError(5)
+
+    xn   = sol.x
+    # opti = sol.optimality
+    opti = 0
+    cost = sol.fun
+    nfev = sol.nfev
+    # niter = sol.niter
+    niter = sol.nit
+
+    return xn, opti, cost, nfev, niter
+
+
+def MLAT(N, n, Rs, rho_baro=-1):
+
+    # ### check quality of measurements and discard accordingly
+    # scale measurement to distance between stations
+    mp, RD, R, Rn, RD_sc = GenMeasurements(N, n, Rs)
 
     # determine problem size
     dim = len(mp)
 
     # ### calculate quadratic form
-    if rho_baro < 0:
-        # don't rely on altitude info
-        A = np.zeros([dim, 3, 3])
-        V = np.zeros([dim, 3, 3])
-        D = np.zeros([dim, 3, 3])
-        b = np.zeros([dim, 3])
-        A[:, :, :], V[:, :, :], D[:, :, :], b[:, :] =\
-            getHyperbolic(N, mp, dim, RD, R, Rn)
-    else:
+    A, V, D, b = getHyperbolic(N, mp, dim, RD, R, Rn)
+    if rho_baro >= 0:
         # use aultitude info
-        A = np.zeros([dim+1, 3, 3])
-        V = np.zeros([dim+1, 3, 3])
-        D = np.zeros([dim+1, 3, 3])
-        b = np.zeros([dim+1, 3])
-        A[:-1, :, :], V[:-1, :, :], D[:-1, :, :], b[:-1, :] =\
-            getHyperbolic(N, mp, dim, RD, R, Rn)
+        C, __, __, __ = getSphere(rho_baro)
 
-        A[-1, :, :], V[-1, :, :], D[-1, :, :], b[-1, :] =\
-            getSphere(rho_baro)
+        # define equality constraint
+        cons = sciop.NonlinearConstraint(lambda x: R0*CON(x, C, mode=0), R0, R0,
+                                         jac=lambda x: R0*CON(x, C, mode=1),
+                                         hess=lambda x, __: CON(x, C, mode=2),
+                                         )
+    else:
+        cons = ()
+
+    # ### setup problem
+    # objective functions
+    def fun(x):
+        return FJ(x, A, b, dim, V, RD, mode=0)
+
+    def funlsq(x):
+        return np.sum(fun(x)**2)
 
     # ### generate x0
-    x0_idx = np.where(abs(RD_sc) == np.min(abs(RD_sc)))[0][0]
-    x0 = N[mp[x0_idx, 0], :] + \
-        (0.5 + RD_sc[x0_idx] / 2) * (N[mp[x0_idx, 1], :] - N[mp[x0_idx, 0], :])
-    # x0 = np.array([0,-0.5,-0.5])
+    x0 = genx0(N, mp, RD_sc, rho_baro)
 
     # ### solve and record
-    xsol = sciop.least_squares(lambda x: 
-                    FJ(x, A, b, dim, V, RDsi, mode=0),
-                    x0, method='trf', x_scale='jac',
-                    verbose=2)
-    # xsol = sciop.least_squares(lambda x: FJ(x, A, b, dim, V, RDsi, mode=0),
-    #                     x0, method='lm', x_scale='jac',\
-    #                     jac = lambda x: FJ(x, A, b, dim, V, RDsi, mode = 1)
-    #                     )
+    """xsol = sciop.least_squares(lambda x:
+    #                 FJ(x[:-1], A, b, dim, V, RDsi, mode=0)
+    #                 - x[-1] * CON(x[:-1], C),
+    #                 x0, method='trf', x_scale='jac',
+    #                 verbose=0, max_nfev=50)
+    """
+    xlist = []
+    sol = sciop.minimize(
+                    lambda x: FJsq(x, A, b, dim, V, RD, mode=0),
+                    x0,
+                    #jac=lambda x: FJsq(x, A, b, dim, V, RD, mode=1),
+                    #hess=lambda x: FJsq(x, A, b, dim, V, RD, mode=2),
+                    method='SLSQP',
+                    #tol=1e-9,
+                    constraints=cons,
+                    options={'maxiter': 50,
+                             },
+                    callback=lambda xk: xlist.append(xk)
+                    )
+    
+    # check result for consistency and return the final solution or nan
+    xn, opti, cost, nfev, niter = CheckResult(sol, dim)
 
-    inDict = {'A': A, 'b': b, 'V': V, 'D': D, 'dim': dim, 'RDsi': RDsi}
+    # build diagnostic struct
+    inDict = {'A': A, 'b': b, 'V': V, 'D': D, 'dim': dim, 'RD': RD, 'xn': xn, 
+              'fun': lambda x, m: FJsq(x, A, b, dim, V, RD, mode=m), 
+              'xlist': xlist}
 
-    # EvaluateResult(xsol, dim)
-    xn = xsol.x
-    cost = xsol.cost
-    fval = xsol.fun
-    opti = xsol.optimality
-    succ = xsol.success
-
-    return xn, cost, fval, opti, succ, inDict
+    return xn, opti, cost, nfev, niter, RD, inDict
 
 
 def NLLS_MLAT(MR, NR, idx, solmode=1):
@@ -288,37 +423,46 @@ def NLLS_MLAT(MR, NR, idx, solmode=1):
     """
     global X, Y, Z, SP2CART, CART2SP, C0, R0
 
+    pdcross = MR.loc[idx, :]
+
     # ### preprocess stations and measurements
-    # find stations
-    stations = np.array(MR.at[idx, 'n'])
-    n = MR.at[idx, 'M']
+    # get number of stations
+    n = pdcross['M']
 
     # get station locations and convert to cartesian
+    stations = np.array(pdcross['n'])
     lats, longs, geoh \
         = NR.loc[stations, ['lat', 'long', 'geoAlt']].to_numpy().T
     N = SP2CART(lats, longs, geoh).T
-    
-    # find number of TDOA measurements available
-    dim = int(n*(n-1)/2)
-    if dim < 3:
-        raise FeasibilityError("not enough stations")
-    
-    # mapping of the stations to the differences
-    mp = np.zeros([dim, 2])
-    mp = np.array([[i, j] for i in range(n) for j in range(i+1, n)])
-    
-    # ### convert unix time stamps of stations to TDOA*C0 differential ranges
-    # grab station TOA
-    secs = np.array(MR.at[idx, 'ns']) * 1e-9  # get nanoseconds into seconds
-    Rs = secs * C0  # meters
-    
-    # baro radius
-    h_baro = MR.at[idx, 'baroAlt']
-    
-    # actually solve
-    # xn, cost, fval, opti, succ, inDict = MetaQ(N, mp, Rs, rho_baro=R0+h_baro)
-    xn, cost, fval, opti, succ, inDict = MetaQ(N, mp, Rs, rho_baro=-1)
 
-    return xn,\
-        CART2SP(xn[0], xn[1], xn[2]),\
-        fval
+    # ### get unix time stamps of stations
+    Rs = np.array(pdcross['ns']) * 1e-9 * C0  # meters
+
+    # baro radius
+    r_baro = pdcross['baroAlt'] + R0  # meters
+
+    # actually solve
+    try:
+        xn, opti, cost, nfev, niter, RD, inDict =\
+            MLAT(N, n, Rs, rho_baro=r_baro)
+            
+        xn_sph = CART2SP(xn[0], xn[1], xn[2])
+        
+        MR.at[idx, "xn_sph_lat"] = xn_sph[0]
+        MR.at[idx, "xn_sph_long"] = xn_sph[1]
+        MR.at[idx, "xn_sph_alt"] = xn_sph[2]
+        
+        MR.at[idx, "fval"] = cost
+        MR.at[idx, "optimality"] = opti
+        MR.at[idx, "nfev"] = nfev
+        MR.at[idx, "niter"] = niter
+        
+        MR.at[idx, "MLAT_status"] = 0
+        
+    except MLATError as e:
+        xn_sph = np.zeros(3)
+        xn_sph[:] = np.nan
+        MR.at[idx, "MLAT_status"] = e.code
+        inDict = {}
+            
+    return xn_sph, inDict

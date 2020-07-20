@@ -241,12 +241,9 @@ def segmentData(MR, use_SR, SR=None, K=0, p=0):
 
     return TRA, VAL
 
-
-
-
-####################
-### faking stuff ###
-####################
+# ###################
+# ## faking stuff ###
+# ###################
 
 
 def insertFakeStations(NR, sph_pos):
@@ -290,7 +287,7 @@ def insertFakeStations(NR, sph_pos):
                              "type": "Test 4",
                              }
 
-    return NR, np.arange(idx_start, idx_start + len(sph_pos) - 1)
+    return NR, np.arange(idx_start, idx_start + len(sph_pos))
 
 
 def insertFakePlanes(MR, NR, sph_pos, n, noise_amp=0):
@@ -352,4 +349,4 @@ def insertFakePlanes(MR, NR, sph_pos, n, noise_amp=0):
             "R": (0, 0, 0, 0),
             }
 
-    return MR, np.arange(start_idx, start_idx + idx)
+    return MR, np.arange(start_idx, start_idx + idx + 1)

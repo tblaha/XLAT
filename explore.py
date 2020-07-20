@@ -42,11 +42,12 @@ MR, NR, SR = rlib.importData(use_pickle, use_file)
 # or
 # select random data points with GT from MR set
 np.random.seed(1)
-use_SR = False
+use_SR = True
 K = 100000  # how many data points to read and use for validation
 p_vali = 0.05  # share of K used for validation
 
-TRA, VAL = rlib.segmentData(MR, use_SR, SR, K=K, p=p_vali)
+TRA, VAL = rlib.segmentDataById(MR, use_SR, SR, K=K, p=p_vali)
+TRA, VAL = rlib.segmentDataByAC(MR, use_SR, SR, K=K, p=p_vali)
 
 ##########################
 
@@ -97,6 +98,7 @@ ax.set_xlabel("Number of Stations -- M")
 """
 
 
+"""
 #######################
 # time drift 
 #######################
@@ -123,3 +125,4 @@ for l in lol:
     plt.scatter(l[0], l[1], s=1, marker='o')
 
 plt.grid()
+"""

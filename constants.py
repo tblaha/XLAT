@@ -43,7 +43,7 @@ SP2CART = lambda lat,long,h: np.array([X(lat,long,h), Y(lat,long,h), Z(lat,long,
 
 LAT  = lambda x,y,z: 90 - arctan2d(np.sqrt(x**2+y**2),z) # using the tan formula for robustness around centre of earth
 LONG = lambda x,y,z: arctan2d(y,x)
-H    = lambda x,y,z: (la.norm(np.array([x,y,z])) - R0)
+H    = lambda x,y,z: (la.norm(np.array([x,y,z]), axis=0) - R0)
 
 CART2SP = lambda x,y,z: np.array([LAT(x,y,z), LONG(x,y,z), H(x,y,z)])
 

@@ -12,29 +12,29 @@ import time
 import numpy.linalg as la
 from matplotlib import pyplot as plt
 
-
-
+"""
 np.random.seed(0)
-N  = np.array([[-1,0,0], [1,0,0], [0,1,0]])
-#N  = np.array([[0,0,1], [0,0,-1], [0,1,0], [1,0,0], [0,-1,0]])
-n  = len(N)
-x_GT = np.array([0.5,0,0])# + 0.1*np.random.random(3) * np.array([1,1,1])
-Rs = la.norm(x_GT - N, axis=1)#+ 0.001*np.random.random(n)
-mp = np.array([[i,j] for i in range(n) for j in range(i+1,n)])
+N = np.array([[-1, 0, 0], [1, 0, 0], [0, 1, 0]])
+# N  = np.array([[0,0,1], [0,0,-1], [0,1,0], [1,0,0], [0,-1,0]])
+n = len(N)
+x_GT = np.array([0.5, 0, 0])  # + 0.1*np.random.random(3) * np.array([1,1,1])
+Rs = la.norm(x_GT - N, axis=1)  # + 0.001*np.random.random(n)
+mp = np.array([[i, j] for i in range(n) for j in range(i+1, n)])
+"""
 
 
 
-xn, cost, fval, opti, succ, inDict = mlh.MetaQ(N, mp, Rs)
-#print(xn)
-#print(x_GT)
+x_sph, inDict = mlh.MLAT(N, n, Rs, rho_baro=r_baro)
+# print(xn)
+# print(x_GT)
 
-Ffun = lambda x: mlh.FJ(x, \
-       inDict['A'], inDict['b'], inDict['dim'], inDict['V'], inDict['RDsi'],\
-       mode = 0)
+Ffun = lambda x: mlh.FJ(x,
+       inDict['A'], inDict['b'], inDict['dim'], inDict['V'], inDict['RDsi'],
+       mode=0)
     
-Jfun = lambda x: mlh.FJ(x, \
-       inDict['A'], inDict['b'], inDict['dim'], inDict['V'], inDict['RDsi'],\
-       mode = 1)
+Jfun = lambda x: mlh.FJ(x,
+       inDict['A'], inDict['b'], inDict['dim'], inDict['V'], inDict['RDsi'],
+       mode=1)
 
 dim = inDict['dim']
 
@@ -55,21 +55,21 @@ for i in range(n_vals):
         Fsq[:, i, j] = F[:, i, j]**2
         J[:, :, i, j] = Jfun(xvec)
         
+K = np.arange(-20, 20.1, 0.5)
 
-K = np.arange(-1, 2.1, 0.5)
 
-"""
 fig, ax = plt.subplots()
 cs = ax.contour(x, y, F[0], K)
 ax.clabel(cs, fontsize=10)
 ax.grid()
-"""
 
+
+"""
 fig = plt.figure()
 ax = fig.gca(projection='3d')
 ax.plot_surface(x, y, F[0], alpha=0.5)
 cs = ax.contour(x, y, F[0], [0.05], linewidths=5)
-
+"""
 
 
 """

@@ -54,8 +54,8 @@ def twoErrorCalc(x, z, RMSEnorm=2):
             norm_vec[i] = gc((lat_x[i], long_x[i]),
                              (lat_z[i], long_z[i])).meters\
                             * (R0+h_z[i])/R0
-            if np.isnan(norm_vec[i]) or norm_vec[i] > 2.5e5:
-                # if np.isnan(norm_vec[0, i]):
+            # if np.isnan(norm_vec[i]) or norm_vec[i] > 2.5*1e5:
+            if np.isnan(norm_vec[i]):
                 norm_vec[i] = 0
                 N = N - 1
         except ValueError:
@@ -71,7 +71,7 @@ def twoErrorCalc(x, z, RMSEnorm=2):
 def threeErrorCalc(x, z, RMSEnorm=2, pnorm=2):
     """
     3 dimensional RMSE using pnorm on cartesian coordinates.
-    
+
     Parameters
     ----------
     x : pd.DataFrame
@@ -350,6 +350,10 @@ class PlanePlot():
                              '^',
                              transform=ccrs.Geodetic()
                              )
+                self.ax.annotate(
+                    str(n), 
+                    xy=(nodes.at[n, 'long'] + 0.05, nodes.at[n, 'lat'] + 0.05)
+                    )
 
     def updateExtent(self, longs, lats):
         """
