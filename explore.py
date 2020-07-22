@@ -46,8 +46,8 @@ use_SR = True
 K = 100000  # how many data points to read and use for validation
 p_vali = 0.05  # share of K used for validation
 
-TRA, VAL = rlib.segmentDataById(MR, use_SR, SR, K=K, p=p_vali)
-TRA, VAL = rlib.segmentDataByAC(MR, use_SR, SR, K=K, p=p_vali)
+TRA, VAL = rlib.segmentData(MR, use_SR, SR, K=K, p=p_vali)
+# TRA, VAL = rlib.segmentDataByAC(MR, use_SR, SR, K=K, p=p_vali)
 
 ##########################
 
@@ -126,3 +126,34 @@ for l in lol:
 
 plt.grid()
 """
+
+# ###################
+# Error histograms
+# ###################
+
+HI = SEL.copy()
+HI.loc[HI['NormError'] == 0, "NormError"] = 1e6
+
+bins = np.concatenate([np.logspace(-1, 6, 15)])
+
+M_list = np.unique(HI['M'])
+
+fig, axs = plt.subplots(2, 4, sharey=False, sharex=True)
+fig.suptitle("Number of Stations per Measurement -- Histograms -- 826a8f", 
+             fontsize=16
+             )
+
+for idx, m in enumerate(M_list):
+    # for idx, m in enumerate([2, 3]):
+    ax = axs[int(np.floor(idx/4)), idx%4]
+    ax.hist(HI.loc[HI['M'] == m, 'NormError'], 
+            bins=bins,
+            density=False
+            )
+    # ax.set_xticks(ticks=bins[:-1]+0.5)
+    ax.set_xscale('log')
+    ax.grid()
+    ax.set_title("SEL set 4 -- M = %d" % m)
+    __ = ax.set_xlabel("2D Error")
+    ax.set_ylabel("Share of Data")
+    

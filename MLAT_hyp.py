@@ -289,7 +289,8 @@ def CheckResult(sol, dim):
     # solver didn't converge
     if not sol.success:
         raise MLATError(30 + sol.status)
-    if sol.fun > 6 + 14 * (dim-3):
+    if sol.fun > 15 + 30 * (dim - 3):
+        # if sol.fun > 6 + 14 * (dim - 3):
         raise MLATError(4)
     # if sol.optimality > 1:
     #     raise MLATError(4)

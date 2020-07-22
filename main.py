@@ -32,7 +32,7 @@ if False:
 
 # ### import and pre-process
 use_pickle = True
-use_file = 4  # -1 --> competition; 1 through 7 --> training
+use_file = 7  # -1 --> competition; 1 through 7 --> training
 
 MR, NR, SR = rlib.importData(use_pickle, use_file)
 # print("Finished importing data\n")
@@ -41,8 +41,8 @@ MR, NR, SR = rlib.importData(use_pickle, use_file)
 # use separate SR file for validation
 # or
 # select random data points with GT from MR set
-np.random.seed(1)
-use_SR = False
+np.random.seed(2)
+use_SR = True
 K = 10000  # how many data points to read and use for validation
 p_vali = 0.05  # share of K used for validation
 
