@@ -10,6 +10,7 @@ import numpy.linalg as la
 from constants import C0, R0, X, Y, Z, SP2CART, CART2SP
 import scipy.optimize as sciop
 import scipy.linalg as sla
+import scipy.stats as scist
 
 
 class MLATError(Exception):
@@ -126,46 +127,16 @@ def getSphere(rho_baro):
     return A, V, D, b
 
 
-def FJ(x, A, b, dim, V, RD, mode=0):
-    sig = np.sign(RD)
-
-    # discriminant for the sign flip
-    sign_cond = np.array([(np.dot((x - b[i]), V[i, :, 0]) * sig[i] < 0)
-                          for i in range(dim)
-                          ])
-    swapsign, flip = zip(*[((1, 0) if cond else (-1, 1))
-                           for cond in sign_cond
-                           ])
-
+def CON(x, C, mode=0):
+    # value. jacobian or hessian of the constraint
     if mode == 0:
-        # compute function including the sign swapping
-        # Ret = np.array([
-        #     (((np.dot((x - b[i]),
-        #               np.dot(A[i, :, :], (x.T - b[i].T)))
-        #        + 0*swapsign[i] - 1)**2)**(0.5)
-        #      - flip[i] * np.dot((x - b[i]), V[i, :, 0])*25
-        #      ) for i in range(dim)
-        #     ])
-        Ret = np.array([
-            ((np.dot((x - b[i]),
-                      np.dot(A[i, :, :], (x.T - b[i].T)))
-               +0* swapsign[i] - 1)
-             ) for i in range(dim)
-            ])
+        sol = x @ C @ x
     elif mode == 1:
-        # compute Jacobian with the v1 compunent mirroring
-        # delta = np.array([
-        #                   np.dot(A[i, :, :], (x - b[i]))
-        #                   for i in range(dim)
-        #                   ])
-        # Ret = delta - 2 * np.array(
-        #     [flip[i] * np.dot(delta[i], V[i, :, 0]) * V[i, :, 0]
-        #      for i in range(dim)
-        #      ])
-        Ret = np.array([2 * np.dot(A[i, :, :], (x - b[i])) 
-                        for i in range(dim)
-                        ])
-    return Ret
+        sol = 2 * (C @ x)
+    elif mode == 2:
+        sol = 2 * C
+
+    return sol
 
 
 def FJsq(x, A, b, dim, V, RD, mode=0):
@@ -182,16 +153,17 @@ def FJsq(x, A, b, dim, V, RD, mode=0):
         np.dot((x - b[i]),  V[i, :, 0])
         for i in range(dim)
         ])
-    
+
     cond = (f > 0) & (d * p > 0)
     flip = [-1 if c else 1 for c in cond]
     mcc = lambda x: np.heaviside(x, 0) * x
-    
+
     ftilde = f * flip - mcc(d * p)
     qtilde = (q - mcc(p * V[:, :, 0].T).T)
-    qtilde = q
-    
-    if mode == -1:
+
+    if mode == -2:
+        Ret = qtilde
+    elif mode == -1:
         Ret = ftilde
     elif mode == 0:
         Ret = 0.5*np.sum(ftilde**2)
@@ -200,11 +172,11 @@ def FJsq(x, A, b, dim, V, RD, mode=0):
                      axis=0)
     elif mode == 2:
         Ret = 4 * np.sum(np.array([
-            0.5 * ftilde[i] * A[i, :, :] 
+            0.5 * ftilde[i] * A[i, :, :]
             + np.matrix(qtilde[i]).T @ np.matrix(qtilde[i])
             for i in range(dim)
             ]), axis=0)
-    
+
     return Ret
 
 
@@ -235,18 +207,6 @@ def FJsq(x, A, b, dim, V, RD, mode=0):
 """
 
 
-def CON(x, C, mode=0):
-    # value. jacobian or hessian of the constraint
-    if mode == 0:
-        sol = x @ C @ x
-    elif mode == 1:
-        sol = 2 * (C @ x)
-    elif mode == 2:
-        sol = 2 * C
-
-    return sol
-
-
 def GenMeasurements(N, n, Rs):
 
     # ### pre-process data ###
@@ -263,10 +223,29 @@ def GenMeasurements(N, n, Rs):
     # Scaled measurements
     RD_sc = RD/Rn
 
-    # determine usable measurements
-    m_use = ((abs(RD_sc) <= 0.99)
-             & (abs(Rn) > 2000)
-             )
+    # ###determine usable measurements
+    # lambda >0.99
+    lamb_idx = np.where(abs(RD_sc) > 0.99)[0].astype(int)
+    lamb_idx_N = mp[lamb_idx]
+    z = np.zeros([len(lamb_idx), 3])
+    z[:, 0] = lamb_idx
+    z[:, 1:] = lamb_idx_N
+    rem_stations = []
+    while True:
+        sta, freq = scist.mode(z[:, 1:], axis=None, nan_policy='omit')
+        if freq > 1:
+            rem_rows = (z[:, 1:] == sta[0]).any(axis=1)
+            z[rem_rows, 1:] = np.nan
+            rem_stations.append(int(sta[0]))
+        else:
+            break
+    
+    mp_bad_station_bool = np.in1d(mp, rem_stations).reshape(len(mp), 2)
+    m_use = ~mp_bad_station_bool.any(axis=1)
+    
+    # station(s) to discard because of proximity of 2 stations
+    m_use = (abs(Rn) > 20000) & m_use
+    
 
     # error if not enough stations left
     Kmin = 3
@@ -302,7 +281,7 @@ def genx0(N, mp, RD_sc, rho_baro):
     if rho_baro > 0:
         std_mean = np.mean(N, axis=0)
         x0 = std_mean / la.norm(std_mean) * rho_baro
-    
+
     return x0
 
 
@@ -310,6 +289,8 @@ def CheckResult(sol, dim):
     # solver didn't converge
     if not sol.success:
         raise MLATError(30 + sol.status)
+    if sol.fun > 6 + 14 * (dim-3):
+        raise MLATError(4)
     # if sol.optimality > 1:
     #     raise MLATError(4)
     # if sol.cost > 1:
@@ -362,8 +343,7 @@ def MLAT(N, n, Rs, rho_baro=-1):
 
     # ### solve and record
     """xsol = sciop.least_squares(lambda x:
-    #                 FJ(x[:-1], A, b, dim, V, RDsi, mode=0)
-    #                 - x[-1] * CON(x[:-1], C),
+    #                 FJsq(x, A, b, dim, V, RD, mode=-1),
     #                 x0, method='trf', x_scale='jac',
     #                 verbose=0, max_nfev=50)
     """
@@ -373,20 +353,20 @@ def MLAT(N, n, Rs, rho_baro=-1):
                     x0,
                     #jac=lambda x: FJsq(x, A, b, dim, V, RD, mode=1),
                     #hess=lambda x: FJsq(x, A, b, dim, V, RD, mode=2),
-                    method='SLSQP',
+                    method='trust-constr',
                     #tol=1e-9,
                     constraints=cons,
-                    options={'maxiter': 50,
+                    options={'maxiter': 100,
                              },
-                    callback=lambda xk: xlist.append(xk)
+                    callback=lambda xk, __: xlist.append(xk)
                     )
-    
+
     # check result for consistency and return the final solution or nan
     xn, opti, cost, nfev, niter = CheckResult(sol, dim)
 
     # build diagnostic struct
-    inDict = {'A': A, 'b': b, 'V': V, 'D': D, 'dim': dim, 'RD': RD, 'xn': xn, 
-              'fun': lambda x, m: FJsq(x, A, b, dim, V, RD, mode=m), 
+    inDict = {'A': A, 'b': b, 'V': V, 'D': D, 'dim': dim, 'RD': RD, 'xn': xn,
+              'fun': lambda x, m: FJsq(x, A, b, dim, V, RD, mode=m),
               'xlist': xlist}
 
     return xn, opti, cost, nfev, niter, RD, inDict
@@ -445,24 +425,26 @@ def NLLS_MLAT(MR, NR, idx, solmode=1):
     try:
         xn, opti, cost, nfev, niter, RD, inDict =\
             MLAT(N, n, Rs, rho_baro=r_baro)
-            
+
         xn_sph = CART2SP(xn[0], xn[1], xn[2])
-        
+
         MR.at[idx, "xn_sph_lat"] = xn_sph[0]
         MR.at[idx, "xn_sph_long"] = xn_sph[1]
         MR.at[idx, "xn_sph_alt"] = xn_sph[2]
         
+        MR.at[idx, "dim"] = inDict['dim']
+
         MR.at[idx, "fval"] = cost
         MR.at[idx, "optimality"] = opti
         MR.at[idx, "nfev"] = nfev
         MR.at[idx, "niter"] = niter
-        
+
         MR.at[idx, "MLAT_status"] = 0
-        
+
     except MLATError as e:
         xn_sph = np.zeros(3)
         xn_sph[:] = np.nan
         MR.at[idx, "MLAT_status"] = e.code
         inDict = {}
-            
+
     return xn_sph, inDict

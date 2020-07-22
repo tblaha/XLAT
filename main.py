@@ -42,7 +42,7 @@ MR, NR, SR = rlib.importData(use_pickle, use_file)
 # or
 # select random data points with GT from MR set
 np.random.seed(1)
-use_SR = True
+use_SR = False
 K = 10000  # how many data points to read and use for validation
 p_vali = 0.05  # share of K used for validation
 
@@ -79,6 +79,7 @@ TRA.loc[idx_fake_planes[0], ['lat', 'long', 'geoAlt']] = np.nan
 """
 
 
+"""
 # single plane stuff
 # select measurement to compute stuff for
 #seek_id = 9999999 # fake plane
@@ -86,6 +87,7 @@ TRA.loc[idx_fake_planes[0], ['lat', 'long', 'geoAlt']] = np.nan
 # seek_id = 254475  # 3 stations, simple case
 #seek_id = 1766269  # 4 stations, plane outside of interior
 seek_id = 880317 #  6 stations
+# seek_id = 429721
 
 # start MLAT calculations
 #c, found_loc, fval = ml.NLLS_MLAT(MR, NR, seek_id)
@@ -128,7 +130,7 @@ for i in range(n_vals):
     for j in range(n_vals):
         xvec = np.array([x[i, j], y[i, j], z[i, j]])
         F[:, i, j] = inDict['fun'](xvec, -1)
-        Fsq[i, j] = np.sum(F[[0, 1, 2, 3, 4, 5, 6, 7, 9], i, j]**2)
+        # Fsq[i, j] = np.sum(F[[0, 1, 2, 3, 4, 5, 6, 7, 9], i, j]**2)
         Fsq[i, j] = inDict['fun'](xvec, 0)
 
 # plot global optimum
@@ -140,8 +142,8 @@ for i in range(n_vals):
 # plot indivudial measurements
 colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
 i = 0
-#for i in range(inDict['dim']):
-for i in [0, 1, 2, 3, 4, 5, 6, 7, 9]:
+for i in range(inDict['dim']):
+    # for i in [0, 1, 2, 3, 4, 5, 6, 7, 9]:
     cs = pp.ax.contour(long, lat, F[i], [0], 
                         transform=ccrs.PlateCarree(), 
                         colors=colors[i%len(colors)],
@@ -157,15 +159,14 @@ pp.ax.plot(xhist_sph[1, :], xhist_sph[0, :],
            marker='.',
            )
 
-
-
-
-
-
-
-
-
 """
+
+
+
+
+
+
+
 # initialise solution dataframe
 SOL = VAL.copy(deep=True)
 SOL[["lat", "long", "geoAlt"]] = np.nan
@@ -182,8 +183,8 @@ for idx in tqdm(SOL.index):
         x_GT = SP2CART(la[0], lo[0], al[0])
         
         if len(inDict):
-            fval_GT = ml.FJ(x_GT, inDict['A'], inDict['b'], inDict['dim'],
-                            inDict['V'], inDict['RD'], mode=0)
+            fval_GT = ml.FJsq(x_GT, inDict['A'], inDict['b'], inDict['dim'],
+                            inDict['V'], inDict['RD'], mode=-1)
             TRA.at[idx, 'fval_GT'] = np.sum(fval_GT**2)
         
     except ml.MLATError:
@@ -200,7 +201,8 @@ print("\nTime taken: %f sec\n" % el)
 # pr.disable()
 
 
-#olib.writeSolutions("../Comp1_9e68d8.csv", SOL)
+# olib.writeSolutions("../Comp1_9e68d8.csv", SOL)
+olib.writeSolutions("../Train7_9e68d8.csv", SOL)
 RMSE, nv = olib.twoErrorCalc(SOL, VAL, RMSEnorm=2)
 
 TRA.loc[VAL.index, "NormError"] = nv
@@ -209,4 +211,3 @@ SEL = TRA.loc[~np.isnan(TRA.NormError)]\
 
 print(RMSE)
 print(100*sum(nv > 0) / len(SOL))
-"""
