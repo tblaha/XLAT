@@ -5,12 +5,15 @@ Created on Tue Jun 23 22:40:56 2020
 @author: Till
 """
 
+from .helper import C0, R0, X, Y, Z, SP2CART, CART2SP
+
 import numpy as np
 import numpy.linalg as la
-from constants import C0, R0, X, Y, Z, SP2CART, CART2SP
+
 import scipy.optimize as sciop
 import scipy.linalg as sla
 import scipy.stats as scist
+
 
 
 class MLATError(Exception):
@@ -19,8 +22,6 @@ class MLATError(Exception):
 
     def __str__(self):
         return repr(self.code)
-
-
 
 
 def iterx(N, T, xn):
@@ -148,7 +149,7 @@ def FJsq(x, A, b, dim, V, RD, mode=0):
         2 * np.dot(x - b[i], A[i, :, :])
         for i in range(dim)
         ])
-    p = 8 * np.sign(RD) / (np.abs(RD) + 1e-12)  # looks stupid, is robust
+    p = -8 * np.sign(RD) / (np.abs(RD) + 1e-12)  # looks stupid, is robust
     d = np.array([
         np.dot((x - b[i]),  V[i, :, 0])
         for i in range(dim)
@@ -214,7 +215,7 @@ def GenMeasurements(N, n, Rs):
     mp = np.array([[i, j] for i in range(n) for j in range(i+1, n)])
 
     # range differences RD (equivalent to TDOA)
-    RD = (Rs[mp[:, 1]] - Rs[mp[:, 0]])  # meters
+    RD = (- Rs[mp[:, 1]] + Rs[mp[:, 0]])  # meters
 
     # vectors and ranges between stations
     R = (N[mp[:, 1]] - N[mp[:, 0]])
@@ -239,16 +240,21 @@ def GenMeasurements(N, n, Rs):
             rem_stations.append(int(sta[0]))
         else:
             break
-    
+
     mp_bad_station_bool = np.in1d(mp, rem_stations).reshape(len(mp), 2)
     m_use = ~mp_bad_station_bool.any(axis=1)
-    
+
     # station(s) to discard because of proximity of 2 stations
     m_use = (abs(Rn) > 20000) & m_use
-    
+
+    # alternative: only discard lambda > 0.99
+    # m_use = abs(RD_sc) < 0.99
+
+    # alternative: just use all
+    m_use = np.ones(len(mp)).astype(bool)
 
     # error if not enough stations left
-    Kmin = 3
+    Kmin = 4
     if len(RD_sc) < Kmin:
         raise MLATError(1)
         # raise MLATError("Not enough measurements available")
@@ -288,16 +294,24 @@ def genx0(N, mp, RD_sc, rho_baro):
 def CheckResult(sol, dim):
     # solver didn't converge
     if not sol.success:
-        raise MLATError(30 + sol.status)
-    if sol.fun > 15 + 30 * (dim - 3):
-        # if sol.fun > 6 + 14 * (dim - 3):
-        raise MLATError(4)
+        # raise MLATError(30 + sol.status)
+        ecode = 30 + sol.status
+        xn   = np.zeros(3)
+        xn[:] = np.nan
+    # if sol.fun > 15 + 30 * (dim - 3):
+    # elif sol.fun > 1:
+        # raise MLATError(4)
+    #     ecode = 4
+    #     xn   = np.zeros(3)
+    #     xn[:] = np.nan
+    else:
+        ecode = 0
+        xn   = sol.x
     # if sol.optimality > 1:
     #     raise MLATError(4)
     # if sol.cost > 1:
     #     raise MLATError(5)
 
-    xn   = sol.x
     # opti = sol.optimality
     opti = 0
     cost = sol.fun
@@ -305,7 +319,7 @@ def CheckResult(sol, dim):
     # niter = sol.niter
     niter = sol.nit
 
-    return xn, opti, cost, nfev, niter
+    return xn, opti, cost, nfev, niter, ecode
 
 
 def MLAT(N, n, Rs, rho_baro=-1):
@@ -363,12 +377,12 @@ def MLAT(N, n, Rs, rho_baro=-1):
                     )
 
     # check result for consistency and return the final solution or nan
-    xn, opti, cost, nfev, niter = CheckResult(sol, dim)
+    xn, opti, cost, nfev, niter, ecode = CheckResult(sol, dim)
 
     # build diagnostic struct
     inDict = {'A': A, 'b': b, 'V': V, 'D': D, 'dim': dim, 'RD': RD, 'xn': xn,
               'fun': lambda x, m: FJsq(x, A, b, dim, V, RD, mode=m),
-              'xlist': xlist}
+              'xlist': xlist, 'ecode': ecode, 'mp': mp}
 
     return xn, opti, cost, nfev, niter, RD, inDict
 
@@ -432,7 +446,7 @@ def NLLS_MLAT(MR, NR, idx, solmode=1):
         MR.at[idx, "xn_sph_lat"] = xn_sph[0]
         MR.at[idx, "xn_sph_long"] = xn_sph[1]
         MR.at[idx, "xn_sph_alt"] = xn_sph[2]
-        
+
         MR.at[idx, "dim"] = inDict['dim']
 
         MR.at[idx, "fval"] = cost
@@ -440,7 +454,7 @@ def NLLS_MLAT(MR, NR, idx, solmode=1):
         MR.at[idx, "nfev"] = nfev
         MR.at[idx, "niter"] = niter
 
-        MR.at[idx, "MLAT_status"] = 0
+        MR.at[idx, "MLAT_status"] = inDict['ecode']
 
     except MLATError as e:
         xn_sph = np.zeros(3)

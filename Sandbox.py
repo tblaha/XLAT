@@ -5,16 +5,18 @@ Created on Thu Jun 25 15:21:17 2020
 @author: Till
 """
 
+import MLATlib as lib
+import MLATlib.MLAT as ml
+from MLATlib.helper import X, Y, Z, R0, C0, SP2CART
 
+import sys
 
 import numpy as np
+
 from mayavi import mlab
-#from main import MR, NR, SR
-from constants import *
-import outLib as olib
-import MLAT as ml
-import sys
 import matplotlib.pyplot as plt
+
+
 
 ac = 971
 

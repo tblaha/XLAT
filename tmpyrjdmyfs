@@ -7,12 +7,13 @@ Created on Thu Jun 25 07:29:08 2020
 
 import MLATlib as lib
 import MLATlib.MLAT as ml
-from MLATlib.helper import X, Y, Z, R0, C0, SP2CART
+from MLATlib.helper import X, Y, Z, R0, C0
 
 import sys
 
 import numpy as np
 import scipy.optimize as sciop
+
 
 from mayavi import mlab
 
@@ -92,9 +93,9 @@ llsq_active = np.concatenate( (active_pnts, [True]) )
 # use scipy's LSQ solver based on Levenberg-Marqart with custom Jacobian
 # only solve at active_points
 sol = sciop.least_squares(\
-    lambda x: np.array(lib.ml.fun(N, mp, x).T)[0][llsq_active] - b.T[0][llsq_active] * C0, \
+    lambda x: np.array(ml.fun(N, mp, x).T)[0][llsq_active] - b.T[0][llsq_active] * C0, \
     x0, \
-    jac=lambda x: np.array(lib.ml.Jac(N, mp, x)[llsq_active]), \
+    jac=lambda x: np.array(ml.Jac(N, mp, x)[llsq_active]), \
     #method='dogbox', x_scale='jac', loss='linear', tr_solver='exact', \
     #method='dogbox', x_scale='jac', loss='soft_l1', f_scale=1e4, tr_solver='exact', \
     #method='dogbox', x_scale='jac', loss=lambda x: rho_alt(x, 1e0), f_scale=1e4, tr_solver='exact', \
@@ -105,21 +106,21 @@ xn = sol.x
 #print(sol.success)
 #print(sol.message)
 
-sol2 = sciop.minimize(lambda x: la.norm(lib.ml.fun(N, mp, x)[[0,1,2]] - b[[0,1,2]]*C0)**2, \
+sol2 = sciop.minimize(lambda x: la.norm(ml.fun(N, mp, x)[[0,1,2]] - b[[0,1,2]]*C0)**2, \
                       x0,\
                       method='SLSQP',\
-                      jac=lambda x: lib.ml.fun(N, mp, x)[0:-1] / la.norm(lib.ml.fun(N, mp, x)[0:-1]),\
+                      jac=lambda x: ml.fun(N, mp, x)[0:-1] / la.norm(ml.fun(N, mp, x)[0:-1]),\
                       hess=lambda x: Jac(N, mp, x)[0:-1],\
                       constraints = sciop.NonlinearConstraint(\
-                            lambda x: (lib.ml.fun(N, mp, x)[-1] - b[-1]*C0), 0, 0))#, jac=lambda x: lib.ml.Jac(N, mp, x)[-1]) )
+                            lambda x: (ml.fun(N, mp, x)[-1] - b[-1]*C0), 0, 0))#, jac=lambda x: ml.Jac(N, mp, x)[-1]) )
 xn = sol2.x
 
 
 #sol3 = sciop.root(\
-#    lambda x: np.array(lib.ml.fun(N, mp, x).T)[0][llsq_active] - b.T[0][llsq_active] * C0, \
+#    lambda x: np.array(ml.fun(N, mp, x).T)[0][llsq_active] - b.T[0][llsq_active] * C0, \
 #    x0, \
 #    method='lm', \
-#    jac=lambda x: np.array(lib.ml.Jac(N, mp, x)[llsq_active]), \
+#    jac=lambda x: np.array(ml.Jac(N, mp, x)[llsq_active]), \
 #    options = {'ftol':1e-4, 'xtol':1e-10} )
 
 #xn = sol3.x
@@ -154,7 +155,7 @@ fval = np.zeros([n_vals, n_vals, n_vals])
 for i in np.arange(n_vals):
     for j in np.arange(n_vals):
         for k in np.arange(n_vals):
-            F[:,i,j,k]  = lib.ml.fun(N, mp, np.array([x[i,0,0], y[0,j,0], z[0,0,k]])).T[0]
+            F[:,i,j,k]  = ml.fun(N, mp, np.array([x[i,0,0], y[0,j,0], z[0,0,k]])).T[0]
             fval[i,j,k] = la.norm(F[:,i,j,k].squeeze() - b.squeeze()*C0)**2
             
 

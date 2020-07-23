@@ -93,7 +93,7 @@ seek_id = 1333057
 # start MLAT calculations
 x_sph, inDict = lib.ml.NLLS_MLAT(MR, NR, seek_id)
 
-pp = lib.plot.HyperPlot(MR, SR, NR, seek_id, x_sph, inDict)
+pp = lib.out.HyperPlot(MR, SR, NR, seek_id, x_sph, inDict)
 """
 
 # itterazione

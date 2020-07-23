@@ -5,13 +5,14 @@ Created on Sun Jul 12 18:55:25 2020
 @author: Till
 """
 
+import time
 
 import numpy as np
 import numpy.linalg as la
 import scipy.linalg as sla
-from mayavi import mlab
 import scipy.optimize as sciop
-import time
+
+from mayavi import mlab
 
 
 """

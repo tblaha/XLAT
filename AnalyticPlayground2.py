@@ -5,35 +5,42 @@ Created on Sun Jul 12 18:55:25 2020
 @author: Till
 """
 
-import numpy as np
-from mayavi import mlab
-import MLAT_hyp as mlh
-import time
-import numpy.linalg as la
-from matplotlib import pyplot as plt
+import MLATlib.MLAT_hyp as mlh
+from MLATlib.helper import CART2SP
 
-"""
+import time
+
+import numpy as np
+import numpy.linalg as la
+import scipy.optimize as sciop
+
+from matplotlib import pyplot as plt
+from mayavi import mlab
+
+
+
 np.random.seed(0)
-N = np.array([[-1, 0, 0], [1, 0, 0], [0, 1, 0]])
+N = np.array([[-1, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 1]])
 # N  = np.array([[0,0,1], [0,0,-1], [0,1,0], [1,0,0], [0,-1,0]])
 n = len(N)
 x_GT = np.array([0.5, 0, 0])  # + 0.1*np.random.random(3) * np.array([1,1,1])
 Rs = la.norm(x_GT - N, axis=1)  # + 0.001*np.random.random(n)
 mp = np.array([[i, j] for i in range(n) for j in range(i+1, n)])
-"""
+r_baro = -1
 
 
 
-x_sph, inDict = mlh.MLAT(N, n, Rs, rho_baro=r_baro)
+xn, opti, cost, nfev, niter, RD, inDict = mlh.MLAT(N, n, Rs, rho_baro=r_baro)
+x_sph = CART2SP(xn[0], xn[1], xn[2])
 # print(xn)
 # print(x_GT)
 
-Ffun = lambda x: mlh.FJ(x,
-       inDict['A'], inDict['b'], inDict['dim'], inDict['V'], inDict['RDsi'],
+Ffun = lambda x: mlh.FJsq( x,
+       inDict['A'], inDict['b'], inDict['dim'], inDict['V'], inDict['RD'],
        mode=0)
     
-Jfun = lambda x: mlh.FJ(x,
-       inDict['A'], inDict['b'], inDict['dim'], inDict['V'], inDict['RDsi'],
+Jfun = lambda x: mlh.FJsq(x,
+       inDict['A'], inDict['b'], inDict['dim'], inDict['V'], inDict['RD'],
        mode=1)
 
 dim = inDict['dim']
@@ -72,7 +79,6 @@ cs = ax.contour(x, y, F[0], [0.05], linewidths=5)
 """
 
 
-"""
 
 ## Itterazzione
 n_vals = 40
@@ -119,7 +125,7 @@ for idx in range(n):
 
 mlab.points3d(x_GT[0], x_GT[1], x_GT[2], color = (0,1,0), scale_factor=1e-1)
 mlab.points3d(xn[0], xn[1], xn[2], color = (1,0,0), scale_factor=1e-1)
-"""
+
 
 """
 mlab.plot3d(x2, y2, z2, color=(1,1,0), tube_radius=None)

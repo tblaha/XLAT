@@ -5,9 +5,10 @@ Created on Tue Jun 23 22:40:56 2020
 @author: Till
 """
 
+from .helper import C0, R0, X, Y, Z, SP2CART, CART2SP
+
 import numpy as np
 import numpy.linalg as la
-from constants import C0, R0, X, Y, Z, SP2CART, CART2SP
 import scipy.optimize as sciop
 
 

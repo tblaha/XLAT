@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sun Jun 21 17:26:06 2020
+Created on Thu Jul 23 13:15:46 2020
 
 @author: Till
 """
+
+from .helper import R0, X, Y, Z, sind, cosd, CART2SP
 
 import numpy as np
 from numpy import linalg as la
@@ -13,141 +15,148 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import matplotlib.pyplot as plt
 
-from constants import R0, X, Y, Z
+
+def ErrorHist(SEL, columns=4):
+
+    HI = SEL.copy()
+    HI.loc[HI['NormError'] == 0, "NormError"] = np.nan
+
+    bins = np.concatenate([np.logspace(-1, 6, 15)])
+
+    M_list = np.unique(HI['M'])
+
+    rows = int(np.ceil(len(M_list) / columns))
+
+    fig, axs = plt.subplots(rows, columns, sharey=False, sharex=True)
+    fig.suptitle("Number of Stations per Measurement -- Histograms -- 826a8f",
+                 fontsize=16
+                 )
+
+    hists = []
+
+    for idx, m in enumerate(M_list):
+        # for idx, m in enumerate([2, 3]):
+        ax = axs[int(np.floor(idx / columns)), idx % columns]
+        n, b, __ = ax.hist(HI.loc[HI['M'] == m, 'NormError'],
+                           bins=bins,
+                           density=False
+                           )
+        hists.append([m, n, b])
+        # ax.set_xticks(ticks=bins[:-1]+0.5)
+        ax.set_xscale('log')
+        ax.grid()
+        ax.set_title("SEL set 4 -- M = %d" % m)
+        __ = ax.set_xlabel("2D Error")
+        ax.set_ylabel("Datapoints")
+
+    return hists, fig, axs
 
 
-def twoErrorCalc(x, z, RMSEnorm=2):
-    """
-    2 dimensional RMSE using great circle distance on the ground truth height
+def ErrorCovariance(SEL):
 
-    Parameters
-    ----------
-    x : pd.DataFrame
-        Generated solution dataset (validation set).
-    z : pd.DataFrame
-        Ground truth solution dataset (validation set).
-    RMSEnorm : scalar, optional
-        RMSE root to use. The default is 2.
+    def onpick3(event):
+        ind = event.ind
+        print('onpick3 scatter:', SEL[use].index[ind],
+              np.take(x, ind), np.take(y, ind))
 
-    Returns
-    -------
-    e : scalar
-        RMSE.
+    use = SEL["NormError"] > 0
+    yGT, x = zip(SEL.loc[use, ['fval_GT', 'NormError']].to_numpy().T)
+    y, x = zip(SEL.loc[use, ['fval', 'NormError']].to_numpy().T)
 
-    """
-    global R0, X, Y, Z
+    fig = plt.figure()
+    plt.scatter(x, y, picker=True, label='Algorithm residual')
+    plt.scatter(x, yGT, picker=True, label='Ground Truth residual')
+    ax = plt.gca()
 
-    # find the common indices (computed into x and preset in validation set z)
-    sol_idx_bool = np.in1d(x.index, z.index)
-    N = len(z.index)
+    ax.set_xscale('log')
+    ax.set_yscale('log')
 
-    # get lat and longs and ground truth geo height
-    lat_x, long_x = \
-        np.array(x.loc[sol_idx_bool, ['lat', 'long']]).T
-    lat_z, long_z, h_z = \
-        np.array(z.loc[sol_idx_bool, ['lat', 'long', 'geoAlt']]).T
+    ax.set_xlabel("NormError [m]")
+    ax.set_ylabel("Objective function residual")
 
-    # compute great circle distances ("2d" error) between guess and truth
-    norm_vec = np.zeros(N)
-    for i in range(N):
-        try:
-            norm_vec[i] = gc((lat_x[i], long_x[i]),
-                             (lat_z[i], long_z[i])).meters\
-                            * (R0+h_z[i])/R0
-            # if np.isnan(norm_vec[i]) or norm_vec[i] > 2.5*1e5:
-            if np.isnan(norm_vec[i]):
-                norm_vec[i] = 0
-                N = N - 1
-        except ValueError:
-            norm_vec[i] = 0
-            N = N - 1
+    # ax.set_title("GT Residual vs Error")
+    ax.set_title("GT Residual vs Error for M > 4 & no fval cutoff")
 
-    # RMSE error sum
-    e = (np.sum(norm_vec**RMSEnorm)/N)**(1/RMSEnorm)
+    ax.grid()
 
-    return e, norm_vec
+    ax.legend()
+
+    fig.canvas.mpl_connect('pick_event', onpick3)
 
 
-def threeErrorCalc(x, z, RMSEnorm=2, pnorm=2):
-    """
-    3 dimensional RMSE using pnorm on cartesian coordinates.
+def HyperPlot(MR, SR, NR, idx, x_sph, inDict, SQfield=False):
 
-    Parameters
-    ----------
-    x : pd.DataFrame
-        Generated solution dataset (validation set).
-    z : pd.DataFrame
-        Ground truth solution dataset (validation set).
-    RMSEnorm : scalar, optional
-        RMSE root to use. The default is 2.
-    pnorm : scalar, optional
-        pnorm for the cartesian distance calculation. The default is 2.
+    # initiate plane plot
+    pp = PlanePlot()
 
-    Returns
-    -------
-    e : scalar
-        RMSE.
+    # plot ground truth
+    if np.isnan(MR.at[idx, "lat"]):
+        pp.addPoint(SR, [idx])
+    else:
+        pp.addPoint(MR, [idx])
 
-    """
-    global R0, X, Y, Z
+    # plot solution
+    pp.addPointByCoords(np.array([x_sph[0:2]]))
 
-    # find the common indices (computed into x and preset in validation set z)
-    sol_idx_bool = np.in1d(x.index, z.index)
-    N = len(z.index)
+    # plot stations
+    pp.addNodeById(NR, MR, [idx])
 
-    # get lat and longs and ground truth geo height
-    lat_x, long_x, h_x = \
-        np.array(x.loc[sol_idx_bool, ['lat', 'long', 'geoAlt']]).T
+    # calculate scalar fields over the current extend of the plot
+    n_vals = 75
+    longl, longu, latl, latu = pp.ax.get_extent()
+    long, lat = np.meshgrid(np.linspace(longl,
+                                        longu, n_vals),
+                            np.linspace(latl,
+                                        latu, n_vals)
+                            )
+    r = R0 + MR.at[idx, 'baroAlt']
+    x = r * cosd(long) * cosd(lat)
+    y = r * sind(long) * cosd(lat)
+    z = r *              sind(lat)
 
-    lat_z, long_z, h_z = \
-        np.array(z.loc[sol_idx_bool, ['lat', 'long', 'geoAlt']]).T
+    F = np.zeros([inDict['dim'], n_vals, n_vals])
+    Fsq = np.zeros([n_vals, n_vals])
+    for i in range(n_vals):
+        for j in range(n_vals):
+            xvec = np.array([x[i, j], y[i, j], z[i, j]])
+            F[:, i, j] = inDict['fun'](xvec, -1)
+            if SQfield:
+                Fsq[i, j] = inDict['fun'](xvec, 0)
 
-    # convert to cartesian
-    cart_x = [X(lat_x, long_x, h_x),
-              Y(lat_x, long_x, h_x),
-              Z(lat_x, long_x, h_x)
-              ]
-    cart_z = [X(lat_z, long_z, h_z),
-              Y(lat_z, long_z, h_z),
-              Z(lat_z, long_z, h_z)
-              ]
+    # plot combined square objective
+    if SQfield:
+        cs = pp.ax.contour(long, lat, Fsq,
+                           np.logspace(1,  # levels
+                                       np.ceil(np.log10(np.max(Fsq))),
+                                       30),
+                           transform=ccrs.PlateCarree(),
+                           )
+        # pp.ax.clabel(cs, fontsize=10)
 
-    # compute great circle distances ("2d" error) between guess and truth
-    norm_vec = la.norm(np.array(cart_z) - np.array(cart_x), pnorm, 0)
-    # broken = (np.isnan(norm_vec)) | (norm_vec > 2.5e5)
-    broken = (np.isnan(norm_vec) | (norm_vec > 1e6))
-    norm_vec[broken] = 0
-    N = N - sum(broken)
+    # plot indivudial measurements
+    Ns = np.array(MR.loc[idx, 'n'])
+    colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
+    i = 0
+    for i in range(inDict['dim']):
+        # for i in [0, 1, 2, 3, 4, 5, 6, 7, 9]:
+        cs = pp.ax.contour(long, lat, F[i], [0],
+                           transform=ccrs.PlateCarree(),
+                           colors=colors[i % len(colors)],
+                           )
+        Ns2 = Ns[inDict['mp'][i]]
+        label = "%d-%d" % (Ns2[0], Ns2[1])
+        pp.ax.clabel(cs, fontsize=10, fmt=label)
 
-    # RMSE error sum
-    e = (np.sum(norm_vec**RMSEnorm)/N)**(1/RMSEnorm)
-
-    return e, norm_vec
-
-
-def writeSolutions(filename, z):
-    """
-    write solution DataFrame to csv.
-
-    Parameters
-    ----------
-    filename : string
-        DESCRIPTION.
-    z : pd.DataFrame
-        DESCRIPTION.
-
-    Returns
-    -------
-    int
-        DESCRIPTION.
-
-    """
-    zz = z.copy()
-    zz.columns = ['latitude', 'longitude', 'geoAltitude']
-    zz.to_csv(filename, index=True, index_label='id',
-              na_rep='NaN')  # not-a-number string
-
-    return 0
+    # plot history
+    xhist = np.array(inDict["xlist"])
+    xhist_sph = CART2SP(xhist[:, 0], xhist[:, 1], xhist[:, 2])
+    pp.ax.plot(xhist_sph[1, :], xhist_sph[0, :],
+               transform=ccrs.PlateCarree(),
+               color='k',
+               marker='.',
+               )
+    
+    return pp
 
 
 class PlanePlot():
@@ -351,7 +360,7 @@ class PlanePlot():
                              transform=ccrs.Geodetic()
                              )
                 self.ax.annotate(
-                    str(n), 
+                    str(n),
                     xy=(nodes.at[n, 'long'] + 0.05, nodes.at[n, 'lat'] + 0.05)
                     )
 
