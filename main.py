@@ -36,12 +36,12 @@ MR, NR, SR = lib.read.importData(use_pickle, use_file)
 # select random data points with GT from MR set
 np.random.seed(2)
 use_SR = False
-K = 20000  # how many data points to read and use for validation
+K = 200000  # how many data points to read and use for validation
 p_vali = 0.05  # share of K used for validation
 
 
-TRA, VAL = lib.read.segmentData(MR, use_SR, SR, K=K, p=p_vali)
-# TRA, VAL = lib.read.segmentDataByAC(MR, K, p_vali)
+# TRA, VAL = lib.read.segmentData(MR, use_SR, SR, K=K, p=p_vali)
+TRA, VAL = lib.read.segmentDataByAC(MR, K, p_vali)
 
 
 """
@@ -117,8 +117,8 @@ for idx in tqdm(SOL.index):
         x_GT = SP2CART(la[0], lo[0], al[0])
 
         if len(inDict):
-            fval_GT = lib.ml.FJsq(x_GT, inDict['A'], inDict['b'], 
-                                  inDict['dim'], inDict['V'], 
+            fval_GT = lib.ml.FJsq(x_GT, inDict['A'], inDict['b'],
+                                  inDict['dim'], inDict['V'],
                                   inDict['RD'], inDict['Rn'], mode=-1)
             TRA.at[idx, 'fval_GT'] = np.sum(fval_GT**2)
 
@@ -136,6 +136,42 @@ print("\nTime taken: %f sec\n" % el)
 # pr.disable()
 
 
+RMSE, nv = lib.out.twoErrorCalc(SOL, VAL, RMSEnorm=2)
+
+TRA.loc[VAL.index, "NormError"] = nv
+SEL = TRA.loc[~np.isnan(TRA.NormError)]\
+    .sort_values(by="NormError", ascending=True)
+
+print(RMSE)
+print(100*sum(nv > 0) / len(SOL))
+
+lib.plot.ErrorCovariance(SEL)
+lib.plot.ErrorHist(SEL)
+
+
+
+acs = np.unique(TRA.loc[SOL.index, 'ac'])
+for ac in acs:
+    cur_id = TRA.loc[TRA['ac'] == ac].index
+    cur_id = SOL.index.intersection(cur_id)
+    tempSOL = SOL.loc[cur_id, 'long']
+    cur_nonans = tempSOL.index[~np.isnan(tempSOL)]
+
+    t = TRA.loc[cur_id, 't']
+    t_nonan = t[cur_nonans].to_numpy()
+
+    long = SOL.loc[cur_nonans, 'long'].to_numpy()
+    lat = SOL.loc[cur_nonans, 'lat'].to_numpy()
+
+    if len(lat):
+        SOL.loc[cur_id, 'long'] = np.interp(t, t_nonan, long,
+                                            left=np.nan, right=np.nan)
+        SOL.loc[cur_id, 'lat'] = np.interp(t, t_nonan, lat,
+                                           left=np.nan, right=np.nan)
+    
+        TRA.loc[cur_id, ['long', 'lat']] = SOL.loc[cur_id, ['long', 'lat']]
+
+
 # lib.out.writeSolutions("../Comp1_9e68d8.csv", SOL)
 # lib.out.writeSolutions("../Train7_9e68d8.csv", SOL)
 RMSE, nv = lib.out.twoErrorCalc(SOL, VAL, RMSEnorm=2)
@@ -147,5 +183,15 @@ SEL = TRA.loc[~np.isnan(TRA.NormError)]\
 print(RMSE)
 print(100*sum(nv > 0) / len(SOL))
 
+
 lib.plot.ErrorCovariance(SEL)
+lib.plot.ErrorHist(SEL)
+
+
+
+pp = lib.plot.PlanePlot()
+pp.addTrack(TRA, acs, z=VAL)
+
+
+
 

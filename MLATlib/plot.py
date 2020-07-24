@@ -224,18 +224,23 @@ class PlanePlot():
 
         for c in ac:
             cur_id = x.loc[x.ac == c].index
-            self.updateExtent(x.loc[x.ac == c, 'long'],
-                              x.loc[x.ac == c, 'lat']
+            if (z is not None):
+                cur_id = z.index.intersection(cur_id)
+            
+            self.updateExtent(x.loc[cur_id, 'long'],
+                              x.loc[cur_id, 'lat']
                               )
-            self.ax.plot(x.loc[x.ac == c, 'long'],
-                         x.loc[x.ac == c, 'lat'],
-                         transform=ccrs.Geodetic()
+            self.ax.plot(x.loc[cur_id, 'long'],
+                         x.loc[cur_id, 'lat'],
+                         transform=ccrs.Geodetic(),
+                         color="red"
                          )
 
             if (z is not None):
                 self.ax.plot(z.loc[cur_id, 'long'],
                              z.loc[cur_id, 'lat'],
-                             transform=ccrs.Geodetic()
+                             transform=ccrs.Geodetic(),
+                             color="green"
                              )
                 self.updateExtent(z.loc[cur_id, 'long'],
                                   z.loc[cur_id, 'lat']

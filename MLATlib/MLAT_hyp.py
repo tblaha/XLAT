@@ -143,7 +143,7 @@ def FJsq(x, A, b, dim, V, RD, Rn, mode=0, singularity=0):
 
     scaling = (RD)**2/4
     scaling[singularity] = 1
-    scaling = scaling * 1e-6
+    scaling = scaling * 1e-3
     
     ftilde = abssqrt((f * flip
               - (~singularity).astype(int) * 8 * np.clip(d * p, 0, 0.5)**2)
@@ -287,7 +287,7 @@ def CheckResult(sol, dim):
         ecode = 30 + sol.status
         xn   = np.zeros(3)
         xn[:] = np.nan
-    elif sol.fun > 1e3:
+    elif sol.fun > 1e7:
         raise MLATError(4)
         ecode = 4
         xn   = np.zeros(3)
