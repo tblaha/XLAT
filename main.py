@@ -25,7 +25,7 @@ if False:
 
 # ### import and pre-process
 use_pickle = True
-use_file = 4  # -1 --> competition; 1 through 7 --> training
+use_file = 7  # -1 --> competition; 1 through 7 --> training
 
 MR, NR, SR = lib.read.importData(use_pickle, use_file)
 # print("Finished importing data\n")
@@ -40,8 +40,8 @@ K = 200000  # how many data points to read and use for validation
 p_vali = 0.05  # share of K used for validation
 
 
-# TRA, VAL = lib.read.segmentData(MR, use_SR, SR, K=K, p=p_vali)
-TRA, VAL = lib.read.segmentDataByAC(MR, K, p_vali)
+TRA, VAL = lib.read.segmentData(MR, use_SR, SR, K=K, p=p_vali)
+# TRA, VAL = lib.read.segmentDataByAC(MR, K, p_vali)
 
 
 """
@@ -149,12 +149,12 @@ lib.plot.ErrorCovariance(SEL)
 lib.plot.ErrorHist(SEL)
 
 
-
+SOL2 = SOL.copy()
 acs = np.unique(TRA.loc[SOL.index, 'ac'])
 for ac in acs:
     cur_id = TRA.loc[TRA['ac'] == ac].index
-    cur_id = SOL.index.intersection(cur_id)
-    tempSOL = SOL.loc[cur_id, 'long']
+    cur_id = SOL2.index.intersection(cur_id)
+    tempSOL = SOL2.loc[cur_id, 'long']
     cur_nonans = tempSOL.index[~np.isnan(tempSOL)]
 
     t = TRA.loc[cur_id, 't']
@@ -164,24 +164,24 @@ for ac in acs:
     lat = SOL.loc[cur_nonans, 'lat'].to_numpy()
 
     if len(lat):
-        SOL.loc[cur_id, 'long'] = np.interp(t, t_nonan, long,
+        SOL2.loc[cur_id, 'long'] = np.interp(t, t_nonan, long,
+                                             left=np.nan, right=np.nan)
+        SOL2.loc[cur_id, 'lat'] = np.interp(t, t_nonan, lat,
                                             left=np.nan, right=np.nan)
-        SOL.loc[cur_id, 'lat'] = np.interp(t, t_nonan, lat,
-                                           left=np.nan, right=np.nan)
     
-        TRA.loc[cur_id, ['long', 'lat']] = SOL.loc[cur_id, ['long', 'lat']]
+        TRA.loc[cur_id, ['long', 'lat']] = SOL2.loc[cur_id, ['long', 'lat']]
 
 
 # lib.out.writeSolutions("../Comp1_9e68d8.csv", SOL)
-# lib.out.writeSolutions("../Train7_9e68d8.csv", SOL)
-RMSE, nv = lib.out.twoErrorCalc(SOL, VAL, RMSEnorm=2)
+lib.out.writeSolutions("../Train7_9e68d8.csv", SOL2)
+RMSE, nv = lib.out.twoErrorCalc(SOL2, VAL, RMSEnorm=2)
 
 TRA.loc[VAL.index, "NormError"] = nv
 SEL = TRA.loc[~np.isnan(TRA.NormError)]\
     .sort_values(by="NormError", ascending=True)
 
 print(RMSE)
-print(100*sum(nv > 0) / len(SOL))
+print(100*sum(nv > 0) / len(SOL2))
 
 
 lib.plot.ErrorCovariance(SEL)
@@ -189,8 +189,8 @@ lib.plot.ErrorHist(SEL)
 
 
 
-pp = lib.plot.PlanePlot()
-pp.addTrack(TRA, acs, z=VAL)
+# pp = lib.plot.PlanePlot()
+# pp.addTrack(TRA, acs, z=VAL)
 
 
 
