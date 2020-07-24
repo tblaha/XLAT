@@ -96,13 +96,13 @@ def HyperPlot(MR, SR, NR, idx, x_sph, inDict, SQfield=False):
         pp.addPoint(MR, [idx])
 
     # plot solution
-    pp.addPointByCoords(np.array([x_sph[0:2]]))
+    __ = pp.addPointByCoords(np.array([x_sph[0:2]]))
 
     # plot stations
     pp.addNodeById(NR, MR, [idx])
 
     # calculate scalar fields over the current extend of the plot
-    n_vals = 75
+    n_vals = 100
     longl, longu, latl, latu = pp.ax.get_extent()
     long, lat = np.meshgrid(np.linspace(longl,
                                         longu, n_vals),

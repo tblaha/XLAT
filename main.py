@@ -6,7 +6,7 @@ Created on Sun Jun 21 17:07:51 2020
 """
 
 import MLATlib as lib
-from MLATlib.helper import *
+from MLATlib.helper import SP2CART
 
 import os
 import time
@@ -39,8 +39,9 @@ use_SR = False
 K = 20000  # how many data points to read and use for validation
 p_vali = 0.05  # share of K used for validation
 
-TRA, VAL = lib.read.segmentData(MR, use_SR, SR, K=K, p=p_vali)
 
+TRA, VAL = lib.read.segmentData(MR, use_SR, SR, K=K, p=p_vali)
+# TRA, VAL = lib.read.segmentDataByAC(MR, K, p_vali)
 
 
 """
@@ -72,7 +73,7 @@ TRA.loc[idx_fake_planes[0], ['lat', 'long', 'geoAlt']] = np.nan
 """
 
 
-""" # single plane stuff
+"""# single plane stuff
 # #######################
 
 # select measurement to compute stuff for
@@ -86,15 +87,16 @@ TRA.loc[idx_fake_planes[0], ['lat', 'long', 'geoAlt']] = np.nan
 # seek_id = 1028881  # 2 close stations mess it up
 # seek_id = 1524975  # unknown convergence error
 # seek_id = 29421  # hot mess..
-# seek_id = 503201  # best fit
+seek_id = 503201  # best fit
 # seek_id = 1823621  # 2 close stations mess it up
-seek_id = 1333057
+# seek_id = 1333057
 
 # start MLAT calculations
 x_sph, inDict = lib.ml.NLLS_MLAT(MR, NR, seek_id)
 
-pp = lib.plot.HyperPlot(MR, SR, NR, seek_id, x_sph, inDict)
+pp = lib.plot.HyperPlot(MR, SR, NR, seek_id, x_sph, inDict, SQfield=True)
 """
+
 
 # itterazione
 # ##############
@@ -110,18 +112,19 @@ for idx in tqdm(SOL.index):
     try:
         xn_sph, inDict = lib.ml.NLLS_MLAT(TRA, NR, idx, solmode=1)
         SOL.loc[idx, ["lat", "long", "geoAlt"]] = xn_sph
-        
+
         la, lo, al = zip(VAL.loc[idx])
         x_GT = SP2CART(la[0], lo[0], al[0])
-        
+
         if len(inDict):
-            fval_GT = lib.ml.FJsq(x_GT, inDict['A'], inDict['b'], inDict['dim'],
-                            inDict['V'], inDict['RD'], mode=-1)
+            fval_GT = lib.ml.FJsq(x_GT, inDict['A'], inDict['b'], 
+                                  inDict['dim'], inDict['V'], 
+                                  inDict['RD'], inDict['Rn'], mode=-1)
             TRA.at[idx, 'fval_GT'] = np.sum(fval_GT**2)
-        
+
     except lib.ml.MLATError:
         pass
-    #except (lib.ml.FeasibilityError, lib.ml.ConvergenceError):
+    # except (lib.ml.FeasibilityError, lib.ml.ConvergenceError):
     #    xn = np.array([-1, -1, -1])
     #    xn_sph = np.array([-1, -1, -1])
     #    fval = np.array([-1, -1, -1])
@@ -143,4 +146,6 @@ SEL = TRA.loc[~np.isnan(TRA.NormError)]\
 
 print(RMSE)
 print(100*sum(nv > 0) / len(SOL))
+
+lib.plot.ErrorCovariance(SEL)
 

@@ -11,10 +11,10 @@ import numpy.linalg as la
 from scipy import constants as spyc
 from astropy import constants as astc
 
-global G, R0, F2M, C0,\
-    cosd, sind, tand, arcsind, arccosd, arctan2d,\
-    X, Y, Z, SP2CART,\
-    LAT, LONG, H, CART2SP
+# global G, R0, F2M, C0,\
+#     cosd, sind, tand, arcsind, arccosd, arctan2d,\
+#     X, Y, Z, SP2CART,\
+#     LAT, LONG, H, CART2SP
 
 # constants:
 # ---------------------------------------------------------------------------

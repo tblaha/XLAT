@@ -5,7 +5,7 @@ Created on Tue Jun 23 22:40:56 2020
 @author: Till
 """
 
-from .helper import C0, R0, X, Y, Z, SP2CART, CART2SP
+from .helper import C0, R0, SP2CART, CART2SP
 
 import numpy as np
 import numpy.linalg as la
@@ -15,48 +15,12 @@ import scipy.linalg as sla
 import scipy.stats as scist
 
 
-
 class MLATError(Exception):
     def __init__(self, code):
         self.code = code
 
     def __str__(self):
         return repr(self.code)
-
-
-def iterx(N, T, xn):
-    """
-    Old fashioned NLLS iteration scheme; not currently used
-
-    Parameters
-    ----------
-    N : array(n, 3)
-        Station location matrix (cartesian).
-    T : array(n*(n-1)/2, 1)
-        TDOA vector.
-    xn : array(1, 3)
-        current location to linearize around.
-
-    Returns
-    -------
-    xnplus1 : array(1, 3)
-        next location according to the iteration scheme.
-
-    """
-
-    global C0
-
-    # get Jacobian for linearization around previous value xn
-    J = Jac(N, xn)
-
-    # invert equation above for (xnplus1 - xn)
-    delx = la.pinv(J) @ (T*C0 - fun(N, xn))
-
-    # next value by adding the current linearization point to the solution to
-    # the linearization problem
-    xnplus1 = np.array(xn + delx.T)
-
-    return xnplus1[0]
 
 
 def getHyperbolic(N, mp, dim, RD, R, Rd):
@@ -71,6 +35,9 @@ def getHyperbolic(N, mp, dim, RD, R, Rd):
     V[:, :, 1:] = np.array([sla.null_space(V[i, :, :].T)
                             for i in range(dim)
                             ])
+
+    singularity = np.zeros(dim).astype(bool)
+
 
     # shortcuts for matrix
     lm = (Rd - RD)**2
@@ -97,6 +64,7 @@ def getHyperbolic(N, mp, dim, RD, R, Rd):
             ABB[i, 2] = ABB[i, 1]
         except la.LinAlgError:
             ABB[i] = np.array([1, 0, 0])
+            singularity[i] = True
 
     # diagonal matrix for correct scaling of the eigenvectors
     D = np.zeros([dim, 3, 3])
@@ -107,7 +75,7 @@ def getHyperbolic(N, mp, dim, RD, R, Rd):
     # A-matrix of the quadratic form
     A = V @ D @ V.swapaxes(1, 2)
 
-    return A, V, D, b
+    return A, V, D, b, singularity
 
 
 def getSphere(rho_baro):
@@ -140,27 +108,48 @@ def CON(x, C, mode=0):
     return sol
 
 
-def FJsq(x, A, b, dim, V, RD, mode=0):
+def FJsq(x, A, b, dim, V, RD, Rn, mode=0, singularity=0):
+    def mcc(x, th):
+        return np.heaviside(x - th, 0) * (x - th)
+
+    def bias_sign(x):
+        # return np.sign(x)
+        return np.heaviside(x, 1) * 2 - 1
+    
+    def abssqrt(x):
+        return np.sign(x) * (np.abs(x))**(0.7)
+
+    if not np.isscalar(singularity):
+        RD[singularity] = 0
+    else:
+        singularity = np.zeros(dim).astype(bool)
+
     f = np.array([  # (x-b)A(x-b)^T - 1)
         (np.dot((x - b[i]), np.dot(A[i, :, :], (x.T - b[i].T))) - 1)
         for i in range(dim)
-        ])
+        ]) + singularity.astype(int)
     q = np.array([  # 2 * (x-b)A
         2 * np.dot(x - b[i], A[i, :, :])
         for i in range(dim)
         ])
-    p = -8 * np.sign(RD) / (np.abs(RD) + 1e-12)  # looks stupid, is robust
+    p = - 1 / (RD + singularity.astype(int))
     d = np.array([
         np.dot((x - b[i]),  V[i, :, 0])
         for i in range(dim)
         ])
 
-    cond = (f > 0) & (d * p > 0)
+    cond = (d * bias_sign(RD) < 0) & (f > 0)
     flip = [-1 if c else 1 for c in cond]
-    mcc = lambda x: np.heaviside(x, 0) * x
 
-    ftilde = f * flip - mcc(d * p)
-    qtilde = (q - mcc(p * V[:, :, 0].T).T)
+    scaling = (RD)**2/4
+    scaling[singularity] = 1
+    scaling = scaling * 1e-6
+    
+    ftilde = abssqrt((f * flip
+              - (~singularity).astype(int) * 8 * np.clip(d * p, 0, 0.5)**2)
+              * 1 * scaling
+              )
+    qtilde = (q - mcc(p * V[:, :, 0].T, 0).T)
 
     if mode == -2:
         Ret = qtilde
@@ -182,7 +171,7 @@ def FJsq(x, A, b, dim, V, RD, mode=0):
 
 
 """ vanilla quadratic form including jacobian and hessian
-def FJsq(x, A, b, dim, V, RD, mode=0):
+def FJsq(x, A, b, dim, V, RD, Rn, mode=0):
     sig = np.sign(RD)
     if mode == 0:
         Ret = np.sum(0.5*np.array([
@@ -298,12 +287,11 @@ def CheckResult(sol, dim):
         ecode = 30 + sol.status
         xn   = np.zeros(3)
         xn[:] = np.nan
-    # if sol.fun > 15 + 30 * (dim - 3):
-    # elif sol.fun > 1:
-        # raise MLATError(4)
-    #     ecode = 4
-    #     xn   = np.zeros(3)
-    #     xn[:] = np.nan
+    elif sol.fun > 1e3:
+        raise MLATError(4)
+        ecode = 4
+        xn   = np.zeros(3)
+        xn[:] = np.nan
     else:
         ecode = 0
         xn   = sol.x
@@ -332,7 +320,8 @@ def MLAT(N, n, Rs, rho_baro=-1):
     dim = len(mp)
 
     # ### calculate quadratic form
-    A, V, D, b = getHyperbolic(N, mp, dim, RD, R, Rn)
+    A, V, D, b, singularity = getHyperbolic(N, mp, dim, RD, R, Rn)
+
     if rho_baro >= 0:
         # use aultitude info
         C, __, __, __ = getSphere(rho_baro)
@@ -348,7 +337,7 @@ def MLAT(N, n, Rs, rho_baro=-1):
     # ### setup problem
     # objective functions
     def fun(x):
-        return FJ(x, A, b, dim, V, RD, mode=0)
+        return FJ(x, A, b, dim, V, RD, mode=0, singularity=singularity)
 
     def funlsq(x):
         return np.sum(fun(x)**2)
@@ -358,13 +347,13 @@ def MLAT(N, n, Rs, rho_baro=-1):
 
     # ### solve and record
     """xsol = sciop.least_squares(lambda x:
-    #                 FJsq(x, A, b, dim, V, RD, mode=-1),
+    #                 FJsq(x, A, b, dim, V, RD, Rn, mode=-1),
     #                 x0, method='trf', x_scale='jac',
     #                 verbose=0, max_nfev=50)
     """
     xlist = []
     sol = sciop.minimize(
-                    lambda x: FJsq(x, A, b, dim, V, RD, mode=0),
+                    lambda x: FJsq(x, A, b, dim, V, RD, Rn, mode=0),
                     x0,
                     #jac=lambda x: FJsq(x, A, b, dim, V, RD, mode=1),
                     #hess=lambda x: FJsq(x, A, b, dim, V, RD, mode=2),
@@ -381,8 +370,8 @@ def MLAT(N, n, Rs, rho_baro=-1):
 
     # build diagnostic struct
     inDict = {'A': A, 'b': b, 'V': V, 'D': D, 'dim': dim, 'RD': RD, 'xn': xn,
-              'fun': lambda x, m: FJsq(x, A, b, dim, V, RD, mode=m),
-              'xlist': xlist, 'ecode': ecode, 'mp': mp}
+              'fun': lambda x, m: FJsq(x, A, b, dim, V, RD, Rn, mode=m),
+              'xlist': xlist, 'ecode': ecode, 'mp': mp, 'Rn': Rn}
 
     return xn, opti, cost, nfev, niter, RD, inDict
 
@@ -416,7 +405,6 @@ def NLLS_MLAT(MR, NR, idx, solmode=1):
         Function value minus TDOA ranges at the found solution.
 
     """
-    global X, Y, Z, SP2CART, CART2SP, C0, R0
 
     pdcross = MR.loc[idx, :]
 

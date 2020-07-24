@@ -242,6 +242,83 @@ def segmentData(MR, use_SR, SR=None, K=0, p=0):
 
     return TRA, VAL
 
+
+def segmentDataByAC(MR, K, p):
+    """
+
+
+    Parameters
+    ----------
+    MR : TYPE
+        DESCRIPTION.
+    useSR : TYPE
+        DESCRIPTION.
+    SR : TYPE, optional
+        DESCRIPTION. The default is None.
+    K : TYPE, optional
+        DESCRIPTION. The default is 0.
+    p : TYPE, optional
+        DESCRIPTION. The default is 0.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    # find datapoints with ground truth inside training set
+    MR_GT = MR.loc[~np.isnan(MR.lat)]
+    Mrows_GT = len(MR_GT)
+
+    # get aircraft id's
+    ac_ids = np.unique(MR_GT['ac'])
+    np.random.shuffle(ac_ids)
+
+    chosen_ids_tra = []
+    chosen_ids_val = []
+    val_complete = False
+    cnt = 0
+    for idx, ac in enumerate(ac_ids):
+        # ids of the current ac
+        cur_pnts = MR_GT.index[MR_GT['ac'] == ac]
+        pnts = len(cur_pnts)
+        
+        cnt += pnts
+        if (cnt <= K*p):
+            # val set won't be complete with current ac
+            chosen_ids_val.append(list(cur_pnts))
+        elif not val_complete:
+            # val set complete with (part of) current ac
+            chosen_ids_val.append(list(cur_pnts[:int(pnts - (cnt - K*p))
+                                                ]))
+            val_complete = True
+
+        if (cnt <= K):
+            # tra set not yet complete
+            chosen_ids_tra.append(list(cur_pnts))
+        else:
+            # val set complete with (part of) current ac
+            chosen_ids_tra.append(list(cur_pnts[:int(pnts - (cnt - K))
+                                                ]))
+            break
+
+    # flatify lists
+    chosen_ids_tra_flat = [it for sl in chosen_ids_tra for it in sl]
+    chosen_ids_val_flat = [it for sl in chosen_ids_val for it in sl]
+
+    # copy result to TRA and VAL arrays
+    TRA = MR_GT.loc[chosen_ids_tra_flat, :].copy()
+    VAL = MR_GT.loc[chosen_ids_val_flat, ['lat', 'long', 'geoAlt']].copy()
+
+    # NaN out the VAL lines in the training set:
+    TRA.loc[chosen_ids_val_flat, ['lat', 'long', 'geoAlt']] = np.nan
+
+    # sort by index
+    TRA = TRA.sort_index()
+    VAL = VAL.sort_index()
+
+    return TRA, VAL
+
 # ###################
 # ## faking stuff ###
 # ###################
