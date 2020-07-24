@@ -24,8 +24,8 @@ if False:
 
 
 # ### import and pre-process
-use_pickle = True
-use_file = 7  # -1 --> competition; 1 through 7 --> training
+use_pickle = False
+use_file = -1  # -1 --> competition; 1 through 7 --> training
 
 MR, NR, SR = lib.read.importData(use_pickle, use_file)
 # print("Finished importing data\n")
@@ -35,7 +35,7 @@ MR, NR, SR = lib.read.importData(use_pickle, use_file)
 # or
 # select random data points with GT from MR set
 np.random.seed(2)
-use_SR = False
+use_SR = True
 K = 200000  # how many data points to read and use for validation
 p_vali = 0.05  # share of K used for validation
 
@@ -172,8 +172,8 @@ for ac in acs:
         TRA.loc[cur_id, ['long', 'lat']] = SOL2.loc[cur_id, ['long', 'lat']]
 
 
-# lib.out.writeSolutions("../Comp1_9e68d8.csv", SOL)
-lib.out.writeSolutions("../Train7_9e68d8.csv", SOL2)
+lib.out.writeSolutions("../Comp1_.csv", SOL2)
+# lib.out.writeSolutions("../Train7_.csv", SOL2)
 RMSE, nv = lib.out.twoErrorCalc(SOL2, VAL, RMSEnorm=2)
 
 TRA.loc[VAL.index, "NormError"] = nv

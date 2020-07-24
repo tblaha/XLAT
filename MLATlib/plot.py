@@ -128,7 +128,7 @@ def HyperPlot(MR, SR, NR, idx, x_sph, inDict, SQfield=False):
         cs = pp.ax.contour(long, lat, Fsq,
                            np.logspace(1,  # levels
                                        np.ceil(np.log10(np.max(Fsq))),
-                                       30),
+                                       50),
                            transform=ccrs.PlateCarree(),
                            )
         # pp.ax.clabel(cs, fontsize=10)

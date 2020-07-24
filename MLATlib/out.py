@@ -50,7 +50,6 @@ def twoErrorCalc(x, z, RMSEnorm=2):
             norm_vec[i] = gc((lat_x[i], long_x[i]),
                              (lat_z[i], long_z[i])).meters\
                             * (R0+h_z[i])/R0
-            # if np.isnan(norm_vec[i]) or norm_vec[i] > 1e4:
             if np.isnan(norm_vec[i]):
                 norm_vec[i] = 0
                 N = N - 1
@@ -58,8 +57,12 @@ def twoErrorCalc(x, z, RMSEnorm=2):
             norm_vec[i] = 0
             N = N - 1
 
+    # only use lower 99th percentile (reverse engineered)
+    p99 = np.percentile(norm_vec, 99)
+    nv_use = norm_vec <= p99
+
     # RMSE error sum
-    e = (np.sum(norm_vec**RMSEnorm)/N)**(1/RMSEnorm)
+    e = (np.sum(norm_vec[nv_use]**RMSEnorm)/sum(nv_use))**(1/RMSEnorm)
 
     return e, norm_vec
 
