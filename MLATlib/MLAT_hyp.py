@@ -109,63 +109,60 @@ def CON(x, C, mode=0):
 
 
 def FJsq(x, A, b, dim, V, RD, Rn, mode=0, singularity=0):
-    def mcc(x, th):
-        return np.heaviside(x - th, 0) * (x - th)
-
     def bias_sign(x):
         # return np.sign(x)
         return np.heaviside(x, 1) * 2 - 1
-    
-    def abssqrt(x):
-        return np.sign(x) * (np.abs(x))**(0.7)
-
+        
     if not np.isscalar(singularity):
         RD[singularity] = 0
     else:
         singularity = np.zeros(dim).astype(bool)
 
-    f = np.array([  # (x-b)A(x-b)^T - 1)
-        (np.dot((x - b[i]), np.dot(A[i, :, :], (x.T - b[i].T))) - 1)
-        for i in range(dim)
-        ]) + singularity.astype(int)
-    q = np.array([  # 2 * (x-b)A
-        2 * np.dot(x - b[i], A[i, :, :])
-        for i in range(dim)
-        ])
-    p = - 1 / (RD + singularity.astype(int))
     d = np.array([
         np.dot((x - b[i]),  V[i, :, 0])
         for i in range(dim)
         ])
-
-    cond = (d * bias_sign(RD) < 0) & (f > 0)
-    flip = [-1 if c else 1 for c in cond]
-
-    scaling = (RD)**2/4
-    scaling[singularity] = 1
-    scaling = scaling * 1e-3
     
-    ftilde = abssqrt((f * flip
-              - (~singularity).astype(int) * 8 * np.clip(d * p, 0, 0.5)**2)
-              * 1 * scaling
-              )
-    qtilde = (q - mcc(p * V[:, :, 0].T, 0).T)
+    cond = (d * bias_sign(RD) >= 0)# & (f > 0)
+    
+    Q = np.array([
+        cond[i] * A[i, :, :] -
+        ~cond[i] * np.real(sla.sqrtm(A[i, :, :].dot(A[i, :, :].T)))
+        for i in range(dim)
+        ])
 
-    if mode == -2:
-        Ret = qtilde
+    f = np.array([  # (x-b)A(x-b)^T - 1
+        (np.dot((x - b[i]), np.dot(Q[i, :, :], (x.T - b[i].T))))
+        for i in range(dim)
+        ]) - 1 + singularity.astype(int)
+    q = np.array([  # 2 * (x-b)A
+        2 * np.dot(x - b[i], Q[i, :, :])
+        for i in range(dim)
+        ])
+    H = Q
+
+    scaling = (RD)**4/16
+    scaling[singularity] = 1
+    scaling = scaling * 1e-6
+
+    if mode == -3:
+        Ret = H
+    elif mode == -2:
+        Ret = q
     elif mode == -1:
-        Ret = ftilde
+        Ret = f
     elif mode == 0:
-        Ret = 0.5*np.sum(ftilde**2)
+        Ret = 0.5 * np.sum(scaling * f**2)
     elif mode == 1:
-        Ret = np.sum((ftilde * qtilde.T).T,
-                     axis=0)
+        Ret = np.sum(scaling * (f * q.T), axis=1)
     elif mode == 2:
-        Ret = 4 * np.sum(np.array([
-            0.5 * ftilde[i] * A[i, :, :]
-            + np.matrix(qtilde[i]).T @ np.matrix(qtilde[i])
+        inter = np.array([
+            f[i] * H[i, :, :]
+            + 2 * np.matrix(q[i]).T @ np.matrix(q[i])
             for i in range(dim)
-            ]), axis=0)
+            ])
+        Ret = 2 * np.sum(
+            (scaling * inter.swapaxes(0, 2)).swapaxes(0, 2), axis=0)
 
     return Ret
 
@@ -220,27 +217,34 @@ def GenMeasurements(N, n, Rs):
     z = np.zeros([len(lamb_idx), 3])
     z[:, 0] = lamb_idx
     z[:, 1:] = lamb_idx_N
-    rem_stations = []
+    bad_stations_lamb = []
     while True:
         sta, freq = scist.mode(z[:, 1:], axis=None, nan_policy='omit')
         if freq > 1:
             rem_rows = (z[:, 1:] == sta[0]).any(axis=1)
             z[rem_rows, 1:] = np.nan
-            rem_stations.append(int(sta[0]))
+            bad_stations_lamb.append(int(sta[0]))
         else:
             break
 
-    mp_bad_station_bool = np.in1d(mp, rem_stations).reshape(len(mp), 2)
-    m_use = ~mp_bad_station_bool.any(axis=1)
-
-    # station(s) to discard because of proximity of 2 stations
-    m_use = (abs(Rn) > 20000) & m_use
+    bad_meas_lamb = np.in1d(mp, bad_stations_lamb)\
+        .reshape(len(mp), 2).any(axis=1)
+    
+    # Rn < 10km
+    prox_idx = np.where(Rn < 1e4)[0].astype(int)
+    prox_idx_N = mp[prox_idx]
+    bad_meas_prox = np.in1d(mp, prox_idx_N[:, 0])\
+        .reshape(len(mp), 2).any(axis=1)
+    
+    # combine
+    m_use = ~bad_meas_prox & ~bad_meas_lamb
+    m_use[lamb_idx] = False
 
     # alternative: only discard lambda > 0.99
     # m_use = abs(RD_sc) < 0.99
 
     # alternative: just use all
-    m_use = np.ones(len(mp)).astype(bool)
+    # m_use = np.ones(len(mp)).astype(bool)
 
     # error if not enough stations left
     Kmin = 4
@@ -287,7 +291,7 @@ def CheckResult(sol, dim):
         ecode = 30 + sol.status
         xn   = np.zeros(3)
         xn[:] = np.nan
-    elif sol.fun > 1e7:
+    elif sol.fun > 1e10:
         raise MLATError(4)
         ecode = 4
         xn   = np.zeros(3)
@@ -329,18 +333,10 @@ def MLAT(N, n, Rs, rho_baro=-1):
         # define equality constraint
         cons = sciop.NonlinearConstraint(lambda x: R0*CON(x, C, mode=0), R0, R0,
                                          jac=lambda x: R0*CON(x, C, mode=1),
-                                         hess=lambda x, __: CON(x, C, mode=2),
+                                         hess=lambda x, __: R0*CON(x, C, mode=2),
                                          )
     else:
         cons = ()
-
-    # ### setup problem
-    # objective functions
-    def fun(x):
-        return FJ(x, A, b, dim, V, RD, mode=0, singularity=singularity)
-
-    def funlsq(x):
-        return np.sum(fun(x)**2)
 
     # ### generate x0
     x0 = genx0(N, mp, RD_sc, rho_baro)
@@ -355,14 +351,14 @@ def MLAT(N, n, Rs, rho_baro=-1):
     sol = sciop.minimize(
                     lambda x: FJsq(x, A, b, dim, V, RD, Rn, mode=0),
                     x0,
-                    #jac=lambda x: FJsq(x, A, b, dim, V, RD, mode=1),
-                    #hess=lambda x: FJsq(x, A, b, dim, V, RD, mode=2),
-                    method='trust-constr',
-                    #tol=1e-9,
+                    jac=lambda x: FJsq(x, A, b, dim, V, RD, Rn, mode=1),
+                    #hess=lambda x: FJsq(x, A, b, dim, V, RD, Rn, mode=2),
+                    method='SLSQP',
+                    tol=1,
                     constraints=cons,
                     options={'maxiter': 100,
                              },
-                    callback=lambda xk, __: xlist.append(xk)
+                    callback=lambda xk: xlist.append(xk),
                     )
 
     # check result for consistency and return the final solution or nan

@@ -24,8 +24,8 @@ if False:
 
 
 # ### import and pre-process
-use_pickle = False
-use_file = -1  # -1 --> competition; 1 through 7 --> training
+use_pickle = True
+use_file = 4  # -1 --> competition; 1 through 7 --> training
 
 MR, NR, SR = lib.read.importData(use_pickle, use_file)
 # print("Finished importing data\n")
@@ -35,13 +35,13 @@ MR, NR, SR = lib.read.importData(use_pickle, use_file)
 # or
 # select random data points with GT from MR set
 np.random.seed(2)
-use_SR = True
+use_SR = False
 K = 200000  # how many data points to read and use for validation
 p_vali = 0.05  # share of K used for validation
 
 
-TRA, VAL = lib.read.segmentData(MR, use_SR, SR, K=K, p=p_vali)
-# TRA, VAL = lib.read.segmentDataByAC(MR, K, p_vali)
+# TRA, VAL = lib.read.segmentData(MR, use_SR, SR, K=K, p=p_vali)
+TRA, VAL = lib.read.segmentDataByAC(MR, K, p_vali)
 
 
 """
@@ -134,7 +134,6 @@ el = time.time() - t
 print("\nTime taken: %f sec\n" % el)
 
 # pr.disable()
-
 
 RMSE, nv = lib.out.twoErrorCalc(SOL, VAL, RMSEnorm=2)
 

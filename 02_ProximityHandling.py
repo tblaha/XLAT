@@ -46,7 +46,6 @@ TRA, VAL = lib.read.segmentData(MR, use_SR, SR, K=K, p=p_vali)
 # TRA, VAL = lib.read.segmentDataByAC(MR, K, p_vali)
 """
 
-
 # select measurement to compute stuff for
 # seek_id = 9999999 # fake plane
 # seek_id = 111376 # some actually existing plane
@@ -58,9 +57,10 @@ TRA, VAL = lib.read.segmentData(MR, use_SR, SR, K=K, p=p_vali)
 # seek_id = 1028881  # 2 close stations mess it up
 # seek_id = 1524975  # unknown convergence error
 # seek_id = 29421  # hot mess..
-# seek_id = 503201  # best fit
+seek_id = 503201  # best fit
 # seek_id = 1823621  # 2 close stations mess it up
-seek_id = 1333057
+# seek_id = 1333057
+seek_id = 3276  # comp set -1
 
 # start MLAT calculations
 x_sph, inDict = ml.NLLS_MLAT(MR, NR, seek_id)
@@ -69,6 +69,8 @@ x_sph_GT = MR.loc[seek_id, ['lat', 'long', 'geoAlt']]
 print(la.norm(SP2CART(x_sph[0], x_sph[1], x_sph[2])
               - SP2CART(x_sph_GT[0], x_sph_GT[1], x_sph_GT[2])
               ))
+
+print(len(inDict['xlist']))
 
 pp = lib.plot.HyperPlot(MR, SR, NR, seek_id, x_sph, inDict, SQfield=True)
 

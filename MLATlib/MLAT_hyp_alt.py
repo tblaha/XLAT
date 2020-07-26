@@ -117,7 +117,7 @@ def FJsq(x, A, b, dim, V, RD, Rn, mode=0, singularity=0):
         return np.heaviside(x, 1) * 2 - 1
     
     def abssqrt(x):
-        return np.sign(x) * (np.abs(x))**(0.5)
+        return np.sign(x) * (np.abs(x))**(0.7)
 
     if not np.isscalar(singularity):
         RD[singularity] = 0
@@ -220,37 +220,30 @@ def GenMeasurements(N, n, Rs):
     z = np.zeros([len(lamb_idx), 3])
     z[:, 0] = lamb_idx
     z[:, 1:] = lamb_idx_N
-    bad_stations_lamb = []
+    rem_stations = []
     while True:
         sta, freq = scist.mode(z[:, 1:], axis=None, nan_policy='omit')
         if freq > 1:
             rem_rows = (z[:, 1:] == sta[0]).any(axis=1)
             z[rem_rows, 1:] = np.nan
-            bad_stations_lamb.append(int(sta[0]))
+            rem_stations.append(int(sta[0]))
         else:
             break
 
-    bad_meas_lamb = np.in1d(mp, bad_stations_lamb)\
-        .reshape(len(mp), 2).any(axis=1)
-    
-    # Rn < 10km
-    prox_idx = np.where(Rn < 1e4)[0].astype(int)
-    prox_idx_N = mp[prox_idx]
-    bad_meas_prox = np.in1d(mp, prox_idx_N[:, 0])\
-        .reshape(len(mp), 2).any(axis=1)
-    
-    # combine
-    m_use = ~bad_meas_prox & ~bad_meas_lamb
-    m_use[lamb_idx] = False
+    mp_bad_station_bool = np.in1d(mp, rem_stations).reshape(len(mp), 2)
+    m_use = ~mp_bad_station_bool.any(axis=1)
+
+    # station(s) to discard because of proximity of 2 stations
+    m_use = (abs(Rn) > 20000) & m_use
 
     # alternative: only discard lambda > 0.99
     # m_use = abs(RD_sc) < 0.99
 
     # alternative: just use all
-    # m_use = np.ones(len(mp)).astype(bool)
+    m_use = np.ones(len(mp)).astype(bool)
 
     # error if not enough stations left
-    Kmin = 3
+    Kmin = 4
     if len(RD_sc) < Kmin:
         raise MLATError(1)
         # raise MLATError("Not enough measurements available")
@@ -365,7 +358,7 @@ def MLAT(N, n, Rs, rho_baro=-1):
                     #jac=lambda x: FJsq(x, A, b, dim, V, RD, mode=1),
                     #hess=lambda x: FJsq(x, A, b, dim, V, RD, mode=2),
                     method='trust-constr',
-                    tol=1,
+                    #tol=1e-9,
                     constraints=cons,
                     options={'maxiter': 100,
                              },

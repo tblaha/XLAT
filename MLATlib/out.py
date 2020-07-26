@@ -58,7 +58,7 @@ def twoErrorCalc(x, z, RMSEnorm=2):
             N = N - 1
 
     # only use lower 99th percentile (reverse engineered)
-    p99 = np.percentile(norm_vec, 99)
+    p99 = np.percentile(norm_vec[norm_vec > 0], 99)
     nv_use = norm_vec <= p99
 
     # RMSE error sum
