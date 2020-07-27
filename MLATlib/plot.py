@@ -84,6 +84,26 @@ def ErrorCovariance(SEL):
     fig.canvas.mpl_connect('pick_event', onpick3)
 
 
+def StationErrorPlot(NR_corrector):
+
+    fig = plt.figure()
+
+    for i in range(len(NR_corrector.NR_corr)):
+        sta = i + 1
+        x = np.array(NR_corrector.NR_corr[sta - 1][0])
+        y = np.array(NR_corrector.NR_corr[sta - 1][2])
+
+        if len(y) == 0:
+            continue
+
+        plt.plot(x, y, label=str(sta))
+
+    plt.legend()
+    plt.grid()
+
+    return fig
+
+
 def HyperPlot(MR, SR, NR, idx, x_sph, inDict, SQfield=False):
 
     # initiate plane plot
@@ -155,7 +175,7 @@ def HyperPlot(MR, SR, NR, idx, x_sph, inDict, SQfield=False):
                color='k',
                marker='.',
                )
-    
+
     return pp
 
 
@@ -226,7 +246,7 @@ class PlanePlot():
             cur_id = x.loc[x.ac == c].index
             if (z is not None):
                 cur_id = z.index.intersection(cur_id)
-            
+
             self.updateExtent(x.loc[cur_id, 'long'],
                               x.loc[cur_id, 'lat']
                               )

@@ -237,8 +237,8 @@ def segmentData(MR, use_SR, SR=None, K=0, p=0):
         # NaN out the VAL lines in the training set:
         TRA.loc[val_idx, ['lat', 'long', 'geoAlt']] = np.nan
 
-    TRA = TRA.sort_index()
-    VAL = VAL.sort_index()
+    TRA = TRA.sort_index(ascending=True)
+    VAL = VAL.sort_index(ascending=True)
 
     return TRA, VAL
 
