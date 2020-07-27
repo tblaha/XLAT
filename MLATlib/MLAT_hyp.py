@@ -372,7 +372,7 @@ def MLAT(N, n, Rs, rho_baro=-1):
     return xn, opti, cost, nfev, niter, RD, inDict
 
 
-def NLLS_MLAT(MR, NR, idx, solmode=1):
+def NLLS_MLAT(MR, NR, idx, NR_c, solmode=1):
     """
     Wrapper of the iterative non-linear least squares calculation for ac
     position including preprocessing of the Station coordinates, TDOA and
@@ -415,7 +415,8 @@ def NLLS_MLAT(MR, NR, idx, solmode=1):
     N = SP2CART(lats, longs, geoh).T
 
     # ### get unix time stamps of stations
-    Rs = np.array(pdcross['ns']) * 1e-9 * C0  # meters
+    Rs_corr = np.array([NR_c.NR_corr[i - 1][3] for i in stations])
+    Rs = np.array(pdcross['ns']) * 1e-9 * C0 + Rs_corr # meters
 
     # baro radius
     r_baro = pdcross['baroAlt'] + R0  # meters

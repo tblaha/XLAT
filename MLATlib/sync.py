@@ -50,7 +50,6 @@ class NR_corrector():
         N = self.NRnp[Nids - 1]
         t = row.iat[0]
 
-        # x_sph_GT = row[['lat', 'long', 'geoAlt']].to_numpy()
         x_sph_GT = row.iloc[[2, 3, 4]].to_numpy()
         x_GT = SP2CART(x_sph_GT[0], x_sph_GT[1], x_sph_GT[2])
 

@@ -105,35 +105,54 @@ pp = lib.plot.HyperPlot(MR, SR, NR, seek_id, x_sph, inDict, SQfield=True)
 SOL = VAL.copy(deep=True)
 SOL[["lat", "long", "geoAlt"]] = np.nan
 
+alpha = 0.2
+NR_c = lib.sync.NR_corrector(TRA, NR, alpha)
+
 t = time.time()
 # pr = cProfile.Profile()
 # pr.enable()
-for idx in tqdm(SOL.index):
-    try:
-        xn_sph, inDict = lib.ml.NLLS_MLAT(TRA, NR, idx, solmode=1)
-        SOL.loc[idx, ["lat", "long", "geoAlt"]] = xn_sph
+for idx, row in tqdm(TRA.iterrows()):
+    if (SOL.index == idx).any():
+        try:
+            xn_sph, inDict = lib.ml.NLLS_MLAT(TRA, NR, idx, NR_c, solmode=1)
+            SOL.loc[idx, ["lat", "long", "geoAlt"]] = xn_sph
 
-        la, lo, al = zip(VAL.loc[idx])
-        x_GT = SP2CART(la[0], lo[0], al[0])
+            la, lo, al = zip(VAL.loc[idx])
+            x_GT = SP2CART(la[0], lo[0], al[0])
 
-        if len(inDict):
-            fval_GT = lib.ml.FJsq(x_GT, inDict['A'], inDict['b'],
-                                  inDict['dim'], inDict['V'],
-                                  inDict['RD'], inDict['Rn'], mode=-1)
-            TRA.at[idx, 'fval_GT'] = np.sum(fval_GT**2)
+            if len(inDict):
+                fval_GT = lib.ml.FJsq(x_GT, inDict['A'], inDict['b'],
+                                      inDict['dim'], inDict['V'],
+                                      inDict['RD'], inDict['Rn'], mode=-1)
+                TRA.at[idx, 'fval_GT'] = np.sum(fval_GT**2)
 
-    except lib.ml.MLATError:
-        pass
-    # except (lib.ml.FeasibilityError, lib.ml.ConvergenceError):
-    #    xn = np.array([-1, -1, -1])
-    #    xn_sph = np.array([-1, -1, -1])
-    #    fval = np.array([-1, -1, -1])
-    #    pass
+        except lib.ml.MLATError:
+            pass
+    else:
+        # do a relative sync
+        NR_c.RelativeSync(row, idx)
+        
+        cnt = 1
+        if (row['t'] / 300) > cnt:
+            NR_c.AbsoluteSync()
+            cnt += 1
+
+
 
 el = time.time() - t
 print("\nTime taken: %f sec\n" % el)
 
-# pr.disable()
+
+
+
+
+
+
+
+
+
+
+
 
 RMSE, nv = lib.out.twoErrorCalc(SOL, VAL, RMSEnorm=2)
 
@@ -167,7 +186,7 @@ for ac in acs:
                                              left=np.nan, right=np.nan)
         SOL2.loc[cur_id, 'lat'] = np.interp(t, t_nonan, lat,
                                             left=np.nan, right=np.nan)
-    
+
         TRA.loc[cur_id, ['long', 'lat']] = SOL2.loc[cur_id, ['long', 'lat']]
 
 
