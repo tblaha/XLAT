@@ -38,7 +38,6 @@ def getHyperbolic(N, mp, dim, RD, R, Rd):
 
     singularity = np.zeros(dim).astype(bool)
 
-
     # shortcuts for matrix
     lm = (Rd - RD)**2
     phim = lm / (2*Rd)
@@ -112,7 +111,7 @@ def FJsq(x, A, b, dim, V, RD, Rn, mode=0, singularity=0):
     def bias_sign(x):
         # return np.sign(x)
         return np.heaviside(x, 1) * 2 - 1
-        
+
     if not np.isscalar(singularity):
         RD[singularity] = 0
     else:
@@ -122,9 +121,9 @@ def FJsq(x, A, b, dim, V, RD, Rn, mode=0, singularity=0):
         np.dot((x - b[i]),  V[i, :, 0])
         for i in range(dim)
         ])
-    
-    cond = (d * bias_sign(RD) >= 0)# & (f > 0)
-    
+
+    cond = (d * bias_sign(RD) >= 0)  # & (f > 0)
+
     Q = np.array([
         cond[i] * A[i, :, :] -
         ~cond[i] * np.real(sla.sqrtm(A[i, :, :].dot(A[i, :, :].T)))
@@ -229,13 +228,13 @@ def GenMeasurements(N, n, Rs):
 
     bad_meas_lamb = np.in1d(mp, bad_stations_lamb)\
         .reshape(len(mp), 2).any(axis=1)
-    
+
     # Rn < 10km
     prox_idx = np.where(Rn < 1e4)[0].astype(int)
     prox_idx_N = mp[prox_idx]
     bad_meas_prox = np.in1d(mp, prox_idx_N[:, 0])\
         .reshape(len(mp), 2).any(axis=1)
-    
+
     # combine
     m_use = ~bad_meas_prox & ~bad_meas_lamb
     m_use[lamb_idx] = False
@@ -284,37 +283,20 @@ def genx0(N, mp, RD_sc, rho_baro):
     return x0
 
 
-def CheckResult(sol, dim):
-    # solver didn't converge
-    if not sol.success:
-        # raise MLATError(30 + sol.status)
-        ecode = 30 + sol.status
-        xn   = np.zeros(3)
-        xn[:] = np.nan
-    elif sol.fun > 1e10:
-        raise MLATError(4)
-        ecode = 4
-        xn   = np.zeros(3)
-        xn[:] = np.nan
-    else:
-        ecode = 0
-        xn   = sol.x
-    # if sol.optimality > 1:
-    #     raise MLATError(4)
-    # if sol.cost > 1:
-    #     raise MLATError(5)
+def PruneResults(TRA, SOL, th):
+    
+    TRAt = TRA.copy()
+    SOLt = SOL.copy()
 
-    # opti = sol.optimality
-    opti = 0
-    cost = sol.fun
-    nfev = sol.nfev
-    # niter = sol.niter
-    niter = sol.nit
+    idx_prune = TRAt.loc[TRAt['fval'] > th].index
+    TRAt.loc[idx_prune, ["lat", "long", "geoAlt"]] = np.nan
+    TRAt.loc[idx_prune, "MLAT_status"] = 4
+    SOLt.loc[idx_prune, ["lat", "long", "geoAlt"]] = np.nan
 
-    return xn, opti, cost, nfev, niter, ecode
+    return TRAt, SOLt
 
 
-def MLAT(N, n, Rs, rho_baro=-1):
+def MLAT(N, n, Rs, rho_baro=-1, x0=None):
 
     # ### check quality of measurements and discard accordingly
     # scale measurement to distance between stations
@@ -339,7 +321,8 @@ def MLAT(N, n, Rs, rho_baro=-1):
         cons = ()
 
     # ### generate x0
-    x0 = genx0(N, mp, RD_sc, rho_baro)
+    if x0 is None:
+        x0 = genx0(N, mp, RD_sc, rho_baro)
 
     # ### solve and record
     """xsol = sciop.least_squares(lambda x:
@@ -361,18 +344,24 @@ def MLAT(N, n, Rs, rho_baro=-1):
                     callback=lambda xk: xlist.append(xk),
                     )
 
-    # check result for consistency and return the final solution or nan
-    xn, opti, cost, nfev, niter, ecode = CheckResult(sol, dim)
+    
+
+    xn = sol.x
+    opti = 0
+    cost = sol.fun
+    nfev = sol.nfev
+    niter = sol.nit
+    ecode = 0
 
     # build diagnostic struct
     inDict = {'A': A, 'b': b, 'V': V, 'D': D, 'dim': dim, 'RD': RD, 'xn': xn,
               'fun': lambda x, m: FJsq(x, A, b, dim, V, RD, Rn, mode=m),
-              'xlist': xlist, 'ecode': ecode, 'mp': mp, 'Rn': Rn}
+              'xlist': xlist, 'ecode': ecode, 'mp': mp, 'Rn': Rn, 'sol': sol}
 
     return xn, opti, cost, nfev, niter, RD, inDict
 
 
-def NLLS_MLAT(MR, NR, idx, NR_c, solmode=1):
+def NLLS_MLAT(MR, NR, idx, NR_c, solmode='3d'):
     """
     Wrapper of the iterative non-linear least squares calculation for ac
     position including preprocessing of the Station coordinates, TDOA and
@@ -416,15 +405,22 @@ def NLLS_MLAT(MR, NR, idx, NR_c, solmode=1):
 
     # ### get unix time stamps of stations
     Rs_corr = np.array([NR_c.NR_corr[i - 1][3] for i in stations])
-    Rs = np.array(pdcross['ns']) * 1e-9 * C0 + Rs_corr # meters
+    Rs = np.array(pdcross['ns']) * 1e-9 * C0 + Rs_corr  # meters
 
     # baro radius
-    r_baro = pdcross['baroAlt'] + R0  # meters
+    if solmode == '2d':
+        r_baro = pdcross['baroAlt'] + R0  # meters
+    else:
+        r_baro = -1
 
     # actually solve
     try:
         xn, opti, cost, nfev, niter, RD, inDict =\
             MLAT(N, n, Rs, rho_baro=r_baro)
+        
+        if solmode == '2d':
+            xn, opti, cost, nfev, niter, RD, inDict =\
+                MLAT(N, n, Rs, rho_baro=-1, x0=xn)
 
         xn_sph = CART2SP(xn[0], xn[1], xn[2])
 

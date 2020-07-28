@@ -23,13 +23,15 @@ if False:
     get_ipython().magic('reset -sf')
 
 
-# ### import and pre-process
+#%% import
+
 use_pickle = True
 use_file = 4  # -1 --> competition; 1 through 7 --> training
 
 MR, NR, SR = lib.read.importData(use_pickle, use_file)
-# print("Finished importing data\n")
 
+
+#%% segment data
 
 # use separate SR file for validation
 # or
@@ -43,9 +45,11 @@ p_vali = 0.05  # share of K used for validation
 # TRA, VAL = lib.read.segmentData(MR, use_SR, SR, K=K, p=p_vali)
 TRA, VAL = lib.read.segmentDataByAC(MR, K, p_vali)
 
+# print("Finished importing data\n")
 
+
+#%% fakes for debugging
 """
-### fakes for debugging
 # fake nodes
 node_sph = np.array([[50 ,11, 0],\
                      [50 ,9, 0],\
@@ -73,8 +77,8 @@ TRA.loc[idx_fake_planes[0], ['lat', 'long', 'geoAlt']] = np.nan
 """
 
 
-"""# single plane stuff
-# #######################
+#%% single plane stuff
+"""
 
 # select measurement to compute stuff for
 # seek_id = 9999999 # fake plane
@@ -98,118 +102,134 @@ pp = lib.plot.HyperPlot(MR, SR, NR, seek_id, x_sph, inDict, SQfield=True)
 """
 
 
-# itterazione
-# ##############
+#%% initialize
+
+# clock corrector
+alpha = 0.7
+NR_c = lib.sync.NR_corrector(TRA, NR, alpha)
 
 # initialise solution dataframe
 SOL = VAL.copy(deep=True)
 SOL[["lat", "long", "geoAlt"]] = np.nan
 
-alpha = 0.2
-NR_c = lib.sync.NR_corrector(TRA, NR, alpha)
+# initualize np arrays
+xn_sph_np = np.zeros([len(SOL), 3])
+xn_sph_np[:, :] = np.nan
+
+# ground truth as np
+lats, longs, alts = VAL.to_numpy().T
+x_GT = SP2CART(lats, longs, alts).T
+fval_GT = np.zeros(len(SOL))
+fval_GT[:] = np.nan
+
+
+#%% itterazione
 
 t = time.time()
-# pr = cProfile.Profile()
-# pr.enable()
-for idx, row in tqdm(TRA.iterrows()):
+
+npi = 0
+for idx, row in tqdm(TRA.iterrows(), total=len(TRA)):
     if (SOL.index == idx).any():
         try:
-            xn_sph, inDict = lib.ml.NLLS_MLAT(TRA, NR, idx, NR_c, solmode=1)
-            SOL.loc[idx, ["lat", "long", "geoAlt"]] = xn_sph
-
-            la, lo, al = zip(VAL.loc[idx])
-            x_GT = SP2CART(la[0], lo[0], al[0])
+            # assert(idx > 5*60/3600*len(TRA))
+            
+            xn_sph_np[npi], inDict = lib.ml.NLLS_MLAT(TRA, NR, idx, NR_c, 
+                                                      solmode='2d')
 
             if len(inDict):
-                fval_GT = lib.ml.FJsq(x_GT, inDict['A'], inDict['b'],
-                                      inDict['dim'], inDict['V'],
-                                      inDict['RD'], inDict['Rn'], mode=-1)
-                TRA.at[idx, 'fval_GT'] = np.sum(fval_GT**2)
+                fval_GT[npi] = lib.ml.FJsq(x_GT[npi],
+                                           inDict['A'], inDict['b'],
+                                           inDict['dim'], inDict['V'],
+                                           inDict['RD'], inDict['Rn'],
+                                           mode=0
+                                           )
 
-        except lib.ml.MLATError:
+        except (lib.ml.MLATError, AssertionError):
             pass
+        finally:
+            npi += 1
     else:
         # do a relative sync
         NR_c.RelativeSync(row, idx)
-        
+
         cnt = 1
         if (row['t'] / 300) > cnt:
             NR_c.AbsoluteSync()
             cnt += 1
 
-
+SOL[["lat", "long", "geoAlt"]] = xn_sph_np
+TRA.loc[SOL.index, ['lat', 'long', 'geoAlt']] = xn_sph_np
 
 el = time.time() - t
 print("\nTime taken: %f sec\n" % el)
 
 
+#%% Prune to trustworthy data
+
+fval_thres = 1e0
+TRA_temp, SOL_temp = lib.ml.PruneResults(TRA, SOL, fval_thres)
 
 
+#%% Print out intermediate accuracy
 
-
-
-
-
-
-
-
-
-RMSE, nv = lib.out.twoErrorCalc(SOL, VAL, RMSEnorm=2)
-
-TRA.loc[VAL.index, "NormError"] = nv
-SEL = TRA.loc[~np.isnan(TRA.NormError)]\
-    .sort_values(by="NormError", ascending=True)
+RMSE, cov, nv = lib.out.twoErrorCalc(SOL_temp, VAL, RMSEnorm=2)
 
 print(RMSE)
-print(100*sum(nv > 0) / len(SOL))
-
-lib.plot.ErrorCovariance(SEL)
-lib.plot.ErrorHist(SEL)
+print(cov*100)
 
 
-SOL2 = SOL.copy()
-acs = np.unique(TRA.loc[SOL.index, 'ac'])
-for ac in acs:
-    cur_id = TRA.loc[TRA['ac'] == ac].index
-    cur_id = SOL2.index.intersection(cur_id)
-    tempSOL = SOL2.loc[cur_id, 'long']
-    cur_nonans = tempSOL.index[~np.isnan(tempSOL)]
+#%% do the filtering and interpolation
 
-    t = TRA.loc[cur_id, 't']
-    t_nonan = t[cur_nonans].to_numpy()
+TRA_temp['MLAT'] = False
+TRA_temp.loc[TRA_temp['MLAT_status'] == 0, 'MLAT'] = True
 
-    long = SOL.loc[cur_nonans, 'long'].to_numpy()
-    lat = SOL.loc[cur_nonans, 'lat'].to_numpy()
+TRA2 = TRA_temp.copy()
+SOL2 = SOL_temp.copy()
+acs = np.unique(TRA2.loc[SOL2.index, 'ac'])
+for ac in tqdm(acs):
+    aco = lib.filt.aircraft(TRA_temp, SOL_temp, ac)
+    aco.Interp(usepnts='all')
+    SOL2.loc[aco.ids] = aco.SOLac
+    TRA2.loc[aco.ids] = aco.TRAac
+    
 
-    if len(lat):
-        SOL2.loc[cur_id, 'long'] = np.interp(t, t_nonan, long,
-                                             left=np.nan, right=np.nan)
-        SOL2.loc[cur_id, 'lat'] = np.interp(t, t_nonan, lat,
-                                            left=np.nan, right=np.nan)
+#%% Print final accuracy
 
-        TRA.loc[cur_id, ['long', 'lat']] = SOL2.loc[cur_id, ['long', 'lat']]
+RMSE, cov, nv = lib.out.twoErrorCalc(SOL2, VAL, RMSEnorm=2)
+
+print(RMSE)
+print(cov*100)
 
 
-lib.out.writeSolutions("../Comp1_.csv", SOL2)
+#%% write
+
+# lib.out.writeSolutions("../Comp1_.csv", SOL2)
 # lib.out.writeSolutions("../Train7_.csv", SOL2)
-RMSE, nv = lib.out.twoErrorCalc(SOL2, VAL, RMSEnorm=2)
 
-TRA.loc[VAL.index, "NormError"] = nv
-SEL = TRA.loc[~np.isnan(TRA.NormError)]\
+
+#%% sort the final data frames and append with some GT data
+
+TRA2.loc[SOL2.index, 'fval_GT'] = fval_GT
+TRA2.loc[VAL.index, "NormError"] = nv
+SEL = TRA2.loc[~np.isnan(TRA2.NormError)]\
     .sort_values(by="NormError", ascending=True)
 
-print(RMSE)
-print(100*sum(nv > 0) / len(SOL2))
+
+# !!! NO MORE ACCURACY-IMPROVING CODE AFTER HERE!!! It would be cheating
 
 
-lib.plot.ErrorCovariance(SEL)
-lib.plot.ErrorHist(SEL)
+#%% plotting
+
+# Error plots
+# lib.plot.ErrorCovariance(SEL)
+# lib.plot.ErrorHist(SEL)
+
+# Track plots
+pp = lib.plot.PlanePlot()
+pp.addTrack(TRA2, acs, z=VAL, color='orange')
+# pp.addTrack(TRA_temp, acs, z=VAL, color='orange')
+# pp.addTrack(TRA2, [2213], z=VAL, color='orange')
+# pp.addTrack(TRA, [2213], z=VAL)
 
 
-
-# pp = lib.plot.PlanePlot()
-# pp.addTrack(TRA, acs, z=VAL)
-
-
-
-
+#%% EOF

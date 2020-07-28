@@ -52,19 +52,20 @@ def twoErrorCalc(x, z, RMSEnorm=2):
                             * (R0+h_z[i])/R0
             if np.isnan(norm_vec[i]):
                 norm_vec[i] = 0
-                N = N - 1
         except ValueError:
             norm_vec[i] = 0
-            N = N - 1
 
     # only use lower 99th percentile (reverse engineered)
-    p99 = np.percentile(norm_vec[norm_vec > 0], 99)
-    nv_use = norm_vec <= p99
+    p98 = np.percentile(norm_vec[norm_vec > 0], 98)
+    nv_use = (norm_vec <= p98) & (norm_vec > 0)
 
     # RMSE error sum
     e = (np.sum(norm_vec[nv_use]**RMSEnorm)/sum(nv_use))**(1/RMSEnorm)
 
-    return e, norm_vec
+    # coverage
+    cov = sum(nv_use) / len(z.index)
+
+    return e, cov, norm_vec
 
 
 def threeErrorCalc(x, z, RMSEnorm=2, pnorm=2):

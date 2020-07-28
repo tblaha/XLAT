@@ -22,7 +22,6 @@ def ErrorHist(SEL, columns=4):
     HI.loc[HI['NormError'] == 0, "NormError"] = np.nan
 
     bins = np.concatenate([np.logspace(-1, 6, 15)])
-
     M_list = np.unique(HI['M'])
 
     rows = int(np.ceil(len(M_list) / columns))
@@ -223,7 +222,7 @@ class PlanePlot():
         """
         plt.close(self.fig)
 
-    def addTrack(self, x, ac, z=None):
+    def addTrack(self, x, ac, z=None, color='red'):
         """
         add the trace of a plane. Also adjusts the plot window extent
 
@@ -242,28 +241,44 @@ class PlanePlot():
 
         """
 
-        for c in ac:
-            cur_id = x.loc[x.ac == c].index
-            if (z is not None):
-                cur_id = z.index.intersection(cur_id)
+        def onpick3(event, indexlist):
+            ind = event.ind
+            print('Index:', indexlist[ind])
 
-            self.updateExtent(x.loc[cur_id, 'long'],
-                              x.loc[cur_id, 'lat']
+        cur_ids = []
+        for i, c in enumerate(ac):
+            cur_ids.append(x.loc[x.ac == c].index)
+            if (z is not None):
+                cur_ids[i] = z.index.intersection(cur_ids[i])
+
+            self.updateExtent(x.loc[cur_ids[i], 'long'],
+                              x.loc[cur_ids[i], 'lat']
                               )
-            self.ax.plot(x.loc[cur_id, 'long'],
-                         x.loc[cur_id, 'lat'],
+            self.ax.plot(x.loc[cur_ids[i], 'long'],
+                         x.loc[cur_ids[i], 'lat'],
                          transform=ccrs.Geodetic(),
-                         color="red"
+                         color=color, marker='.', markersize=4
                          )
+            self.ax.scatter(x.loc[cur_ids[i], 'long'][x.loc[cur_ids[i], 'MLAT']],
+                            x.loc[cur_ids[i], 'lat'][x.loc[cur_ids[i], 'MLAT']],
+                            transform=ccrs.Geodetic(),
+                            color="black", marker='+',
+                            picker=True
+                            )
+            self.fig.canvas.mpl_connect('pick_event',
+                                        lambda y:
+                onpick3(y, x.loc[cur_ids[i], 'long'][x.loc[cur_ids[i], 'MLAT']]
+                                                .index
+                        ))
 
             if (z is not None):
-                self.ax.plot(z.loc[cur_id, 'long'],
-                             z.loc[cur_id, 'lat'],
+                self.ax.plot(z.loc[cur_ids[i], 'long'],
+                             z.loc[cur_ids[i], 'lat'],
                              transform=ccrs.Geodetic(),
-                             color="green"
+                             color="green", marker='.', markersize=4
                              )
-                self.updateExtent(z.loc[cur_id, 'long'],
-                                  z.loc[cur_id, 'lat']
+                self.updateExtent(z.loc[cur_ids[i], 'long'],
+                                  z.loc[cur_ids[i], 'lat']
                                   )
 
     def addPoint(self, x, id, z=None):
