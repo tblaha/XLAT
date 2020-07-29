@@ -337,7 +337,7 @@ def MLAT(N, n, Rs, rho_baro=-1, x0=None):
                     jac=lambda x: FJsq(x, A, b, dim, V, RD, Rn, mode=1),
                     #hess=lambda x: FJsq(x, A, b, dim, V, RD, Rn, mode=2),
                     method='SLSQP',
-                    tol=1,
+                    tol=1e-3,
                     constraints=cons,
                     options={'maxiter': 100,
                              },

@@ -6,7 +6,7 @@ Created on Sun Jun 21 17:07:51 2020
 """
 
 import MLATlib as lib
-from MLATlib.helper import SP2CART
+from MLATlib.helper import SP2CART, C0
 
 import os
 import time
@@ -26,7 +26,7 @@ if False:
 #%% import
 
 use_pickle = False
-use_file = -1  # -1 --> competition; 1 through 7 --> training
+use_file = 7  # -1 --> competition; 1 through 7 --> training
 
 MR, NR, SR = lib.read.importData(use_pickle, use_file)
 
@@ -105,7 +105,7 @@ pp = lib.plot.HyperPlot(MR, SR, NR, seek_id, x_sph, inDict, SQfield=True)
 #%% initialize
 
 # clock corrector
-alpha = 0.2
+alpha = 1e-2
 NR_c = lib.sync.NR_corrector(TRA, NR, alpha)
 
 # initialise solution dataframe
@@ -122,6 +122,8 @@ x_GT = SP2CART(lats, longs, alts).T
 fval_GT = np.zeros(len(SOL))
 fval_GT[:] = np.nan
 
+# 
+TRA['MLATtime'] = np.nan
 
 #%% itterazione
 
@@ -131,7 +133,7 @@ npi = 0
 for idx, row in tqdm(TRA.iterrows(), total=len(TRA)):
     if (SOL.index == idx).any():
         try:
-            assert(idx > 8*60/3600*len(TRA))
+            assert(idx > 6*60/3600*len(TRA))
             
             xn_sph_np[npi], inDict = lib.ml.NLLS_MLAT(TRA, NR, idx, NR_c, 
                                                       solmode='2d')
@@ -144,6 +146,11 @@ for idx, row in tqdm(TRA.iterrows(), total=len(TRA)):
                                            mode=0
                                            )
 
+            TRA['MLATtime'] = np.mean(
+                np.array([TRA.loc[idx, 'ns']]) 
+                + NR_c.NR_corr[TRA.loc[idx, 'n'][0]][3] / 3e8 * 1e9
+                )
+
         except (lib.ml.MLATError, AssertionError):
             pass
         finally:
@@ -152,10 +159,10 @@ for idx, row in tqdm(TRA.iterrows(), total=len(TRA)):
         # do a relative sync
         NR_c.RelativeSync(row, idx)
 
-        cnt = 1
-        if (row['t'] / 300) > cnt:
-            NR_c.AbsoluteSync()
-            cnt += 1
+        # cnt = 1
+        # if (row['t'] / 300) > cnt:
+        #     NR_c.AbsoluteSync()
+        #     cnt += 1
 
 SOL[["lat", "long", "geoAlt"]] = xn_sph_np
 TRA.loc[SOL.index, ['lat', 'long', 'geoAlt']] = xn_sph_np
@@ -163,10 +170,13 @@ TRA.loc[SOL.index, ['lat', 'long', 'geoAlt']] = xn_sph_np
 el = time.time() - t
 print("\nTime taken: %f sec\n" % el)
 
+# TRA.to_pickle("./TRA_7_45d6b9_"+str(alpha)+".pkl")
+# SOL.to_pickle("./SOL_7_45d6b9_"+str(alpha)+".pkl")
+
 
 #%% Prune to trustworthy data
 
-fval_thres = 1e8
+fval_thres = 1e9
 TRA_temp, SOL_temp = lib.ml.PruneResults(TRA, SOL, fval_thres)
 
 
@@ -197,7 +207,7 @@ for ac in tqdm(acs):
 #%% keep only best 50% by score
 
 covEst = len(TRA2[~np.isnan(TRA2['score'])]) / len(SOL2)
-keepPercentile = 0.51 / covEst
+keepPercentile = 0.50 / covEst
 loseIndex = TRA2.index[TRA2['score'] > TRA2['score'].quantile(keepPercentile)]
 
 TRA3 = TRA2.copy()
@@ -217,8 +227,8 @@ print(cov*100)
 
 #%% write
 
-lib.out.writeSolutions("../Comp1_.csv", SOL3)
-# lib.out.writeSolutions("../Train7_.csv", SOL)
+# lib.out.writeSolutions("../Comp1_.csv", SOL3)
+lib.out.writeSolutions("../Train7_45d6b9.csv", SOL)
 
 
 #%% sort the final data frames and append with some GT data
