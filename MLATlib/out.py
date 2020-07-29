@@ -55,15 +55,20 @@ def twoErrorCalc(x, z, RMSEnorm=2):
         except ValueError:
             norm_vec[i] = 0
 
-    # only use lower 99th percentile (reverse engineered)
-    p98 = np.percentile(norm_vec[norm_vec > 0], 98)
-    nv_use = (norm_vec <= p98) & (norm_vec > 0)
-
-    # RMSE error sum
-    e = (np.sum(norm_vec[nv_use]**RMSEnorm)/sum(nv_use))**(1/RMSEnorm)
-
-    # coverage
-    cov = sum(nv_use) / len(z.index)
+    if (norm_vec > 0).any():
+        # only use lower 99th percentile (reverse engineered)
+        p98 = np.percentile(norm_vec[norm_vec > 0], 98)
+        nv_use = (norm_vec <= p98) & (norm_vec > 0)
+    
+        # RMSE error sum
+        e = (np.sum(norm_vec[nv_use]**RMSEnorm)/sum(nv_use))**(1/RMSEnorm)
+        
+        # coverage
+        cov = sum(nv_use) / len(z.index)
+    
+    else:
+        e = np.nan
+        cov = 0.98 * sum(~np.isnan(lat_x)) / len(z.index)
 
     return e, cov, norm_vec
 
@@ -93,7 +98,6 @@ def threeErrorCalc(x, z, RMSEnorm=2, pnorm=2):
 
     # find the common indices (computed into x and preset in validation set z)
     sol_idx_bool = np.in1d(x.index, z.index)
-    N = len(z.index)
 
     # get lat and longs and ground truth geo height
     lat_x, long_x, h_x = \
@@ -114,15 +118,23 @@ def threeErrorCalc(x, z, RMSEnorm=2, pnorm=2):
 
     # compute great circle distances ("2d" error) between guess and truth
     norm_vec = la.norm(np.array(cart_z) - np.array(cart_x), pnorm, 0)
-    # broken = (np.isnan(norm_vec)) | (norm_vec > 2.5e5)
-    broken = (np.isnan(norm_vec) | (norm_vec > 1e6))
-    norm_vec[broken] = 0
-    N = N - sum(broken)
+    
+    if (norm_vec > 0).any():
+        # only use lower 99th percentile (reverse engineered)
+        p98 = np.percentile(norm_vec[norm_vec > 0], 98)
+        nv_use = (norm_vec <= p98) & (norm_vec > 0)
+    
+        # RMSE error sum
+        e = (np.sum(norm_vec[nv_use]**RMSEnorm)/sum(nv_use))**(1/RMSEnorm)
+    
+        # coverage
+        cov = sum(nv_use) / len(z.index)
+    
+    else:
+        e = np.nan
+        cov = 0.98 * sum(~np.isnan(lat_x)) / len(z.index)
 
-    # RMSE error sum
-    e = (np.sum(norm_vec**RMSEnorm)/N)**(1/RMSEnorm)
-
-    return e, norm_vec
+    return e, cov, norm_vec
 
 
 def writeSolutions(filename, z):

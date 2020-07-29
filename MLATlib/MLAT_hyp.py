@@ -408,7 +408,7 @@ def NLLS_MLAT(MR, NR, idx, NR_c, solmode='3d'):
     Rs = np.array(pdcross['ns']) * 1e-9 * C0 + Rs_corr  # meters
 
     # baro radius
-    if solmode == '2d':
+    if (solmode == '2d') or (solmode == '2drc'):
         r_baro = pdcross['baroAlt'] + R0  # meters
     else:
         r_baro = -1
@@ -418,7 +418,7 @@ def NLLS_MLAT(MR, NR, idx, NR_c, solmode='3d'):
         xn, opti, cost, nfev, niter, RD, inDict =\
             MLAT(N, n, Rs, rho_baro=r_baro)
         
-        if solmode == '2d':
+        if solmode == '2drc':
             xn, opti, cost, nfev, niter, RD, inDict =\
                 MLAT(N, n, Rs, rho_baro=-1, x0=xn)
 

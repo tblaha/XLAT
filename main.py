@@ -25,8 +25,8 @@ if False:
 
 #%% import
 
-use_pickle = True
-use_file = 4  # -1 --> competition; 1 through 7 --> training
+use_pickle = False
+use_file = -1  # -1 --> competition; 1 through 7 --> training
 
 MR, NR, SR = lib.read.importData(use_pickle, use_file)
 
@@ -37,13 +37,13 @@ MR, NR, SR = lib.read.importData(use_pickle, use_file)
 # or
 # select random data points with GT from MR set
 np.random.seed(2)
-use_SR = False
-K = 200000  # how many data points to read and use for validation
+use_SR = True
+K = 20000  # how many data points to read and use for validation
 p_vali = 0.05  # share of K used for validation
 
 
-# TRA, VAL = lib.read.segmentData(MR, use_SR, SR, K=K, p=p_vali)
-TRA, VAL = lib.read.segmentDataByAC(MR, K, p_vali)
+TRA, VAL = lib.read.segmentData(MR, use_SR, SR, K=K, p=p_vali)
+# TRA, VAL = lib.read.segmentDataByAC(MR, K, p_vali)
 
 # print("Finished importing data\n")
 
@@ -105,7 +105,7 @@ pp = lib.plot.HyperPlot(MR, SR, NR, seek_id, x_sph, inDict, SQfield=True)
 #%% initialize
 
 # clock corrector
-alpha = 0.7
+alpha = 0.2
 NR_c = lib.sync.NR_corrector(TRA, NR, alpha)
 
 # initialise solution dataframe
@@ -131,7 +131,7 @@ npi = 0
 for idx, row in tqdm(TRA.iterrows(), total=len(TRA)):
     if (SOL.index == idx).any():
         try:
-            # assert(idx > 5*60/3600*len(TRA))
+            assert(idx > 8*60/3600*len(TRA))
             
             xn_sph_np[npi], inDict = lib.ml.NLLS_MLAT(TRA, NR, idx, NR_c, 
                                                       solmode='2d')
@@ -166,7 +166,7 @@ print("\nTime taken: %f sec\n" % el)
 
 #%% Prune to trustworthy data
 
-fval_thres = 1e0
+fval_thres = 1e8
 TRA_temp, SOL_temp = lib.ml.PruneResults(TRA, SOL, fval_thres)
 
 
@@ -188,7 +188,7 @@ SOL2 = SOL_temp.copy()
 acs = np.unique(TRA2.loc[SOL2.index, 'ac'])
 for ac in tqdm(acs):
     aco = lib.filt.aircraft(TRA_temp, SOL_temp, ac)
-    aco.Interp(usepnts='all')
+    aco.Interp(usepnts='adaptive')
     SOL2.loc[aco.ids] = aco.SOLac
     TRA2.loc[aco.ids] = aco.TRAac
     
@@ -203,8 +203,8 @@ print(cov*100)
 
 #%% write
 
-# lib.out.writeSolutions("../Comp1_.csv", SOL2)
-# lib.out.writeSolutions("../Train7_.csv", SOL2)
+lib.out.writeSolutions("../Comp1_bd3e27.csv", SOL2)
+# lib.out.writeSolutions("../Train7_bd3e27.csv", SOL2)
 
 
 #%% sort the final data frames and append with some GT data

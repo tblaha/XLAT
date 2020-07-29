@@ -34,8 +34,15 @@ class aircraft():
                          )
         
         D = la.norm(x_MLAT - x_cart, axis=0)
+        Dnonan = D[~np.isnan(D)]
         
-        e = (np.nansum(D**2) / np.sum((~np.isnan(D)).astype(int)))**0.5
+        Dfilt = Dnonan \
+                - np.abs(np.convolve(Dnonan, np.array([-1, 2, -1]),
+                                     mode='same'
+                                     ))
+        Dfilt[Dfilt < 0] = np.nan
+        
+        e = (np.nansum(Dfilt**2) / np.sum(~np.isnan(Dfilt)))**0.5
         
         return e, D
 
@@ -83,8 +90,14 @@ class aircraft():
         # estimate accuracy
         self.e, self.D = self._InterpErrorEst(x_sph)
         
-        if self.recursive & (self.e > 200):  # and (self.e_last - self.e) > 0.01:
-            self.addn.append(np.argmax(self.D[~np.isnan(self.D)]))
+        if self.recursive & (self.e > 125):  # and (self.e_last - self.e) > 0.01:
+            Dnonan = self.D[~np.isnan(self.D)]
+            Dfilt = Dnonan \
+                - np.abs(np.convolve(Dnonan, np.array([-1, 2, -1]),
+                                     mode='same'
+                                     ))
+            
+            self.addn.append(np.argmax(Dfilt))
             self.addn.sort()
             self.e_last = self.e
             self.itercnt += 1
