@@ -184,6 +184,7 @@ TRA_temp['MLAT'] = False
 TRA_temp.loc[TRA_temp['MLAT_status'] == 0, 'MLAT'] = True
 
 TRA2 = TRA_temp.copy()
+TRA2['score'] = np.nan
 SOL2 = SOL_temp.copy()
 acs = np.unique(TRA2.loc[SOL2.index, 'ac'])
 for ac in tqdm(acs):
@@ -191,11 +192,24 @@ for ac in tqdm(acs):
     aco.Interp(usepnts='adaptive')
     SOL2.loc[aco.ids] = aco.SOLac
     TRA2.loc[aco.ids] = aco.TRAac
-    
+
+
+#%% keep only best 50% by score
+
+covEst = len(TRA2[~np.isnan(TRA2['score'])]) / len(SOL2)
+keepPercentile = 0.51 / covEst
+loseIndex = TRA2.index[TRA2['score'] > TRA2['score'].quantile(keepPercentile)]
+
+TRA3 = TRA2.copy()
+SOL3 = SOL2.copy()
+
+TRA3.loc[loseIndex, ['lat', 'long', 'geoAlt']] = np.nan
+SOL3.loc[loseIndex, ['lat', 'long', 'geoAlt']] = np.nan
+
 
 #%% Print final accuracy
 
-RMSE, cov, nv = lib.out.twoErrorCalc(SOL2, VAL, RMSEnorm=2)
+RMSE, cov, nv = lib.out.twoErrorCalc(SOL3, VAL, RMSEnorm=2)
 
 print(RMSE)
 print(cov*100)
@@ -203,15 +217,15 @@ print(cov*100)
 
 #%% write
 
-lib.out.writeSolutions("../Comp1_bd3e27.csv", SOL2)
-# lib.out.writeSolutions("../Train7_bd3e27.csv", SOL2)
+lib.out.writeSolutions("../Comp1_.csv", SOL3)
+# lib.out.writeSolutions("../Train7_.csv", SOL)
 
 
 #%% sort the final data frames and append with some GT data
 
-TRA2.loc[SOL2.index, 'fval_GT'] = fval_GT
-TRA2.loc[VAL.index, "NormError"] = nv
-SEL = TRA2.loc[~np.isnan(TRA2.NormError)]\
+TRA3.loc[SOL3.index, 'fval_GT'] = fval_GT
+TRA3.loc[VAL.index, "NormError"] = nv
+SEL = TRA3.loc[~np.isnan(TRA3.NormError)]\
     .sort_values(by="NormError", ascending=True)
 
 
@@ -226,7 +240,7 @@ SEL = TRA2.loc[~np.isnan(TRA2.NormError)]\
 
 # Track plots
 pp = lib.plot.PlanePlot()
-pp.addTrack(TRA2, acs, z=VAL, color='orange')
+pp.addTrack(TRA3, acs, z=VAL, color='orange')
 # pp.addTrack(TRA_temp, acs, z=VAL, color='orange')
 # pp.addTrack(TRA2, [2213], z=VAL, color='orange')
 # pp.addTrack(TRA, [2213], z=VAL)
