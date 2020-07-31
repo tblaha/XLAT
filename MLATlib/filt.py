@@ -65,6 +65,7 @@ class aircraft():
                 self.e_last = 1e9
                 self.addn = []
                 idsn = self.ids_nonan[[0, -1]]
+                self.idsn_np = [0, -1]
             else:
                 raise ValueError("usepnts must be one of \
                                  'end', \
@@ -76,10 +77,10 @@ class aircraft():
             idsn = self.ids_nonan[self.idsn_np]
             
         # all available time "t" if the aircraft
-        ts = self.TRAac.loc[self.ids, 't'].to_numpy()
+        ts = self.TRAac.loc[self.ids, 'MLATtime'].to_numpy()
 
         # get nodal values
-        tn = self.TRAac.loc[idsn, 't'].to_numpy()
+        tn = self.TRAac.loc[idsn, 'MLATtime'].to_numpy()
         latn, longn, altn = self.SOLac.loc[idsn,
                                            ['lat', 'long', 'geoAlt']]\
             .to_numpy().T

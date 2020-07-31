@@ -344,26 +344,12 @@ def insertFakeStations(NR, sph_pos):
 
     # add fake stations
     idx_start = NR.index[-1] + 1
-    NR.loc[idx_start + 0] = {"lat": sph_pos[0, 0],
-                             "long": sph_pos[0, 1],
-                             "geoAlt": sph_pos[0, 2],
-                             "type": "Test 1",
-                             }
-    NR.loc[idx_start + 1] = {"lat": sph_pos[1, 0],
-                             "long": sph_pos[1, 1],
-                             "geoAlt": sph_pos[1, 2],
-                             "type": "Test 2",
-                             }
-    NR.loc[idx_start + 2] = {"lat": sph_pos[2, 0],
-                             "long": sph_pos[2, 1],
-                             "geoAlt": sph_pos[2, 2],
-                             "type": "Test 3",
-                             }
-    NR.loc[idx_start + 3] = {"lat": sph_pos[3, 0],
-                             "long": sph_pos[3, 1],
-                             "geoAlt": sph_pos[3, 2],
-                             "type": "Test 4",
-                             }
+    for i in range(len(sph_pos)):
+        NR.loc[idx_start + i] = {"lat": sph_pos[i, 0],
+                                 "long": sph_pos[i, 1],
+                                 "geoAlt": sph_pos[i, 2],
+                                 "type": "Test "+str(i),
+                                 }
 
     return NR, np.arange(idx_start, idx_start + len(sph_pos))
 
@@ -397,6 +383,8 @@ def insertFakePlanes(MR, NR, sph_pos, n, noise_amp=0):
 
     # convert nodes to cartesian for calculating TOAs
     for idx, nitem in enumerate(n):
+        MR.loc[start_idx + idx] = ""
+    
         # get associated stations and convert to cartesian
         node_sph = np.array(NR.loc[nitem, ["lat", "long", "geoAlt"]])
         node_cart = SP2CART(node_sph[:, 0], node_sph[:, 1], node_sph[:, 2]).T
@@ -424,7 +412,7 @@ def insertFakePlanes(MR, NR, sph_pos, n, noise_amp=0):
             "m": "N/A",
             "n": nitem,
             "ns": tuple(ns),
-            "R": (0, 0, 0, 0),
+            "R": tuple(ns*0),
             }
 
     return MR, np.arange(start_idx, start_idx + idx + 1)

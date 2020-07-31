@@ -51,7 +51,7 @@ def ErrorHist(SEL, columns=4):
     return hists, fig, axs
 
 
-def ErrorCovariance(SEL):
+def ErrorCovariance(SEL, disc=None):
 
     def onpick3(event):
         ind = event.ind
@@ -63,8 +63,14 @@ def ErrorCovariance(SEL):
     y, x = zip(SEL.loc[use, ['fval', 'NormError']].to_numpy().T)
 
     fig = plt.figure()
-    plt.scatter(x, y, picker=True, label='Algorithm residual')
-    plt.scatter(x, yGT, picker=True, label='Ground Truth residual')
+    if disc is not None:
+        sc = plt.scatter(x, y, s=2, c=disc[use].astype(int), picker=True, label='Algorithm residual')
+        scGT = plt.scatter(x, yGT, s=2, c=SEL.loc[use, 'dim'], picker=True, label='Ground Truth residual')
+        fig.colorbar(sc)
+    else:
+        plt.scatter(x, y, s=2, picker=True, label='Algorithm residual')
+        plt.scatter(x, yGT, s=2, picker=True, label='Ground Truth residual')
+    
     ax = plt.gca()
 
     ax.set_xscale('log')
@@ -121,7 +127,7 @@ def HyperPlot(MR, SR, NR, idx, x_sph, inDict, SQfield=False):
     pp.addNodeById(NR, MR, [idx])
 
     # calculate scalar fields over the current extend of the plot
-    n_vals = 100
+    n_vals = 50
     longl, longu, latl, latu = pp.ax.get_extent()
     long, lat = np.meshgrid(np.linspace(longl,
                                         longu, n_vals),

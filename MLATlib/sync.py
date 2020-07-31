@@ -94,3 +94,14 @@ class NR_corrector():
                 self.NR_corr[Nids[rem]-1][3] = cur_corr
 
             diff[(mp == rem).any(axis=1)] = np.nan
+            
+    def ReconstructClocks(self, tserver, n):
+        NR_idx = n - 1
+
+        for i in NR_idx:
+            for j, t in enumerate(self.NR_corr[i][0]):
+                if t > tserver:
+                    self.NR_corr[i][3] = self.NR_corr[i][2][j]
+                    print(self.NR_corr[i][2][j])
+                    break
+

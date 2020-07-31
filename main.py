@@ -5,6 +5,8 @@ Created on Sun Jun 21 17:07:51 2020
 @author: Till
 """
 
+#%% modules
+
 import MLATlib as lib
 from MLATlib.helper import SP2CART, C0
 
@@ -13,10 +15,13 @@ import time
 from tqdm import tqdm
 
 import numpy as np
+import numpy.linalg as la
 import pandas as pd
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+
+import pickle
 
 if False:
     from IPython import get_ipython
@@ -49,36 +54,36 @@ TRA, VAL = lib.read.segmentData(MR, use_SR, SR, K=K, p=p_vali)
 
 
 #%% fakes for debugging
-"""
+
 # fake nodes
-node_sph = np.array([[50 ,11, 0],\
-                     [50 ,9, 0],\
-                     [51, 10, 0],\
-                     [49, 10, 0]])
+node_sph = np.array([[50 ,11, 0],
+                     [50 ,9, 0],
+                     [51, 10, 1000],
+                     [50, 10, 0]
+                     ])
 
 NR, idx_fake_n = lib.read.insertFakeStations(NR, node_sph)
 
 
 # fake planes to training set
-plane_sph = np.array([[50.1, 10.2, 2000]     , [56, 10.21, 0]])
+plane_sph = np.array([[50.1, 10.2, 10000]     , [56, 10.21, 0]])
 plane_n   =           [tuple(idx_fake_n), tuple(idx_fake_n)]
 
 TRA, idx_fake_planes = lib.read.insertFakePlanes(
     TRA, NR,
     plane_sph,
     plane_n,
-    noise_amp=50
+    noise_amp=0
     )
 
 VAL.loc[idx_fake_planes[0], ['lat', 'long', 'geoAlt']] = \
     TRA.loc[idx_fake_planes[0], ['lat', 'long', 'geoAlt']]
 
 TRA.loc[idx_fake_planes[0], ['lat', 'long', 'geoAlt']] = np.nan
-"""
+
 
 
 #%% single plane stuff
-"""
 
 # select measurement to compute stuff for
 # seek_id = 9999999 # fake plane
@@ -91,21 +96,29 @@ TRA.loc[idx_fake_planes[0], ['lat', 'long', 'geoAlt']] = np.nan
 # seek_id = 1028881  # 2 close stations mess it up
 # seek_id = 1524975  # unknown convergence error
 # seek_id = 29421  # hot mess..
-seek_id = 503201  # best fit
+# seek_id = 503201  # best fit
 # seek_id = 1823621  # 2 close stations mess it up
 # seek_id = 1333057
+seek_id = 1809908
+
+seek_id = idx_fake_planes[0]
+
+NR_c_sp = lib.sync.NR_corrector(TRA, NR, 0.1)
 
 # start MLAT calculations
-x_sph, inDict = lib.ml.NLLS_MLAT(MR, NR, seek_id)
+x_sph, inDict = lib.ml.NLLS_MLAT(TRA, NR, seek_id, NR_c_sp, solmode='2d')
 
-pp = lib.plot.HyperPlot(MR, SR, NR, seek_id, x_sph, inDict, SQfield=True)
-"""
+pp = lib.plot.HyperPlot(TRA, VAL, NR, seek_id, x_sph, inDict, SQfield=True)
+
+print(la.norm(SP2CART(x_sph[0], x_sph[1], x_sph[2]) 
+              - SP2CART(plane_sph[0,0], plane_sph[0,1], plane_sph[0,2])
+              ))
 
 
 #%% initialize
 
 # clock corrector
-alpha = 1e-2
+alpha = 4e-2
 NR_c = lib.sync.NR_corrector(TRA, NR, alpha)
 
 # initialise solution dataframe
@@ -125,6 +138,7 @@ fval_GT[:] = np.nan
 # 
 TRA['MLATtime'] = np.nan
 
+
 #%% itterazione
 
 t = time.time()
@@ -133,6 +147,7 @@ npi = 0
 for idx, row in tqdm(TRA.iterrows(), total=len(TRA)):
     if (SOL.index == idx).any():
         try:
+            assert(False)
             assert(idx > 6*60/3600*len(TRA))
             
             xn_sph_np[npi], inDict = lib.ml.NLLS_MLAT(TRA, NR, idx, NR_c, 
@@ -146,15 +161,20 @@ for idx, row in tqdm(TRA.iterrows(), total=len(TRA)):
                                            mode=0
                                            )
 
-            TRA['MLATtime'] = np.mean(
-                np.array([TRA.loc[idx, 'ns']]) 
-                + NR_c.NR_corr[TRA.loc[idx, 'n'][0]][3] / 3e8 * 1e9
-                )
+            
 
         except (lib.ml.MLATError, AssertionError):
             pass
         finally:
             npi += 1
+            
+            TRA.at[idx, 'MLATtime'] = np.mean(
+                np.array([TRA.loc[idx, 'ns']]) 
+                + np.array([NR_c.NR_corr[TRA.loc[idx, 'n'][i] - 1][3] \
+                            for i in range(len(TRA.loc[idx, 'ns']))
+                            ])
+                / 3e8 * 1e9
+                )
     else:
         # do a relative sync
         NR_c.RelativeSync(row, idx)
@@ -170,22 +190,45 @@ TRA.loc[SOL.index, ['lat', 'long', 'geoAlt']] = xn_sph_np
 el = time.time() - t
 print("\nTime taken: %f sec\n" % el)
 
-# TRA.to_pickle("./TRA_7_45d6b9_"+str(alpha)+".pkl")
-# SOL.to_pickle("./SOL_7_45d6b9_"+str(alpha)+".pkl")
+
+TRA.to_pickle("./TRA_7_45d6b9_.pkl")
+SOL.to_pickle("./SOL_7_45d6b9_.pkl")
+with open('NRc_fvalGT_45d6b9.pkl', 'wb') as f:  # Python 3: open(..., 'wb')
+    pickle.dump([NR_c, fval_GT], f)
+
 
 
 #%% Prune to trustworthy data
 
-fval_thres = 1e9
-TRA_temp, SOL_temp = lib.ml.PruneResults(TRA, SOL, fval_thres)
+def prune(SEL):
+    # return SEL['fval'] > (10**(np.clip(8 + 0.5*np.clip(SEL['dim'] - 6, 0, 1e4)**0.55, 9, 12)))
+    return (~SEL['Interior'] & SEL['fval'] > 0) | (SEL['dim'] < 3) | (SEL['fval'] > 1e9) # cheat!!!
+    # return SEL['fval'] > 1e20
+
+TRA_temp, SOL_temp = lib.ml.PruneResults(TRA, SOL, prunefun=prune)
 
 
 #%% Print out intermediate accuracy
 
-RMSE, cov, nv = lib.out.twoErrorCalc(SOL_temp, VAL, RMSEnorm=2)
-
+RMSE, cov, nv = lib.out.twoErrorCalc(SOL_temp,
+                                     VAL,
+                                     RMSEnorm=2
+                                     )
 print(RMSE)
 print(cov*100)
+
+
+TRA_temp.loc[SOL_temp.index, 'fval_GT'] = 0  # fval_GT
+TRA_temp.loc[VAL.index, "NormError"] = nv
+SEL = TRA_temp.loc[~np.isnan(TRA_temp.NormError)]\
+    .sort_values(by="NormError", ascending=True)
+
+lib.plot.ErrorCovariance(SEL)
+
+TRA_temp['fval_GT'] = np.nan
+TRA_temp['NormError'] = np.nan
+
+
 
 
 #%% do the filtering and interpolation
@@ -227,8 +270,8 @@ print(cov*100)
 
 #%% write
 
-# lib.out.writeSolutions("../Comp1_.csv", SOL3)
-lib.out.writeSolutions("../Train7_45d6b9.csv", SOL)
+# lib.out.writeSolutions("../Comp1_a93e20.csv", SOL3)
+# lib.out.writeSolutions("../Train7_a93e20.csv", SOL3)
 
 
 #%% sort the final data frames and append with some GT data

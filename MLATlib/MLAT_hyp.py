@@ -145,11 +145,11 @@ def FJsq(x, A, b, dim, V, RD, Rn, mode=0, singularity=0):
     scaling = scaling * 1e-6
 
     if mode == -3:
-        Ret = H
+        Ret = H * np.sqrt(scaling)
     elif mode == -2:
-        Ret = q
+        Ret = q * np.sqrt(scaling)
     elif mode == -1:
-        Ret = f
+        Ret = f * np.sqrt(scaling)
     elif mode == 0:
         Ret = 0.5 * np.sum(scaling * f**2)
     elif mode == 1:
@@ -164,33 +164,6 @@ def FJsq(x, A, b, dim, V, RD, Rn, mode=0, singularity=0):
             (scaling * inter.swapaxes(0, 2)).swapaxes(0, 2), axis=0)
 
     return Ret
-
-
-""" vanilla quadratic form including jacobian and hessian
-def FJsq(x, A, b, dim, V, RD, Rn, mode=0):
-    sig = np.sign(RD)
-    if mode == 0:
-        Ret = np.sum(0.5*np.array([
-             (np.dot((x - b[i]), np.dot(A[i, :, :], (x.T - b[i].T))) - 1)**2
-              for i in range(dim)
-             ]))
-    elif mode == 1:
-        Ret = np.sum(np.array([
-            (np.dot((x - b[i]), np.dot(A[i, :, :], (x.T - b[i].T))) - 1)
-            * (2 * np.dot(A[i, :, :], (x - b[i])))
-            for i in range(dim)
-            ]), axis=0)
-    elif mode == 2:
-        Ret = np.sum(np.array([
-             (np.dot((x - b[i]), np.dot(A[i, :, :], (x.T - b[i].T))) - 1)
-             * 2 * A[i, :, :]
-             + 4 * np.cross(np.dot(A[i, :, :], x - b[i]),
-                            np.dot(x - b[i], A[i, :, :])
-                            )
-              for i in range(dim)
-             ]), axis=0)
-    return Ret
-"""
 
 
 def GenMeasurements(N, n, Rs):
@@ -211,7 +184,7 @@ def GenMeasurements(N, n, Rs):
 
     # ###determine usable measurements
     # lambda >0.99
-    lamb_idx = np.where(abs(RD_sc) > 0.99)[0].astype(int)
+    lamb_idx = np.where(abs(RD_sc) > 0.9)[0].astype(int)
     lamb_idx_N = mp[lamb_idx]
     z = np.zeros([len(lamb_idx), 3])
     z[:, 0] = lamb_idx
@@ -229,7 +202,7 @@ def GenMeasurements(N, n, Rs):
     bad_meas_lamb = np.in1d(mp, bad_stations_lamb)\
         .reshape(len(mp), 2).any(axis=1)
 
-    # Rn < 10km
+    # Rn < 10km --> rewrite to remove station with least remaining measremnts
     prox_idx = np.where(Rn < 1e4)[0].astype(int)
     prox_idx_N = mp[prox_idx]
     bad_meas_prox = np.in1d(mp, prox_idx_N[:, 0])\
@@ -238,6 +211,7 @@ def GenMeasurements(N, n, Rs):
     # combine
     m_use = ~bad_meas_prox & ~bad_meas_lamb
     m_use[lamb_idx] = False
+    m_use[[2, 4, 5]] = False
 
     # alternative: only discard lambda > 0.99
     # m_use = abs(RD_sc) < 0.99
@@ -246,7 +220,7 @@ def GenMeasurements(N, n, Rs):
     # m_use = np.ones(len(mp)).astype(bool)
 
     # error if not enough stations left
-    Kmin = 4
+    Kmin = 3
     if len(RD_sc) < Kmin:
         raise MLATError(1)
         # raise MLATError("Not enough measurements available")
@@ -276,19 +250,23 @@ def genx0(N, mp, RD_sc, rho_baro):
     x0 = N[mp[x0_idx, 0], :] + \
         (0.5 + RD_sc[x0_idx] / 2) * (N[mp[x0_idx, 1], :] - N[mp[x0_idx, 0], :])
 
-    if rho_baro > 0:
+    # if rho_baro > 0:
+    if True:
         std_mean = np.mean(N, axis=0)
         x0 = std_mean / la.norm(std_mean) * rho_baro
 
     return x0
 
 
-def PruneResults(TRA, SOL, th):
+def PruneResults(TRA, SOL, prunefun=None):
     
     TRAt = TRA.copy()
     SOLt = SOL.copy()
 
-    idx_prune = TRAt.loc[TRAt['fval'] > th].index
+    if prunefun is None:
+        prunefun = lambda TRAt: TRAt['fval'] > 1e8
+
+    idx_prune = TRAt.loc[prunefun(TRAt)].index
     TRAt.loc[idx_prune, ["lat", "long", "geoAlt"]] = np.nan
     TRAt.loc[idx_prune, "MLAT_status"] = 4
     SOLt.loc[idx_prune, ["lat", "long", "geoAlt"]] = np.nan
@@ -335,13 +313,14 @@ def MLAT(N, n, Rs, rho_baro=-1, x0=None):
                     lambda x: FJsq(x, A, b, dim, V, RD, Rn, mode=0),
                     x0,
                     jac=lambda x: FJsq(x, A, b, dim, V, RD, Rn, mode=1),
-                    #hess=lambda x: FJsq(x, A, b, dim, V, RD, Rn, mode=2),
-                    method='SLSQP',
+                    hess=lambda x: 0.25*FJsq(x, A, b, dim, V, RD, Rn, mode=2),
+                    method='trust-constr',
                     tol=1e-3,
                     constraints=cons,
                     options={'maxiter': 100,
+                             'xtol': 0.1,
                              },
-                    callback=lambda xk: xlist.append(xk),
+                    callback=lambda xk, __: xlist.append(xk),
                     )
 
     
@@ -405,7 +384,7 @@ def NLLS_MLAT(MR, NR, idx, NR_c, solmode='3d'):
 
     # ### get unix time stamps of stations
     Rs_corr = np.array([NR_c.NR_corr[i - 1][3] for i in stations])
-    Rs = np.array(pdcross['ns']) * 1e-9 * C0 + Rs_corr  # meters
+    Rs = np.array(pdcross['ns']) * 1e-9 * C0# + Rs_corr  # meters
 
     # baro radius
     if (solmode == '2d') or (solmode == '2drc'):
