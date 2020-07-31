@@ -68,8 +68,9 @@ def ErrorCovariance(SEL, disc=None):
         scGT = plt.scatter(x, yGT, s=2, c=SEL.loc[use, 'dim'], picker=True, label='Ground Truth residual')
         fig.colorbar(sc)
     else:
-        plt.scatter(x, y, s=2, picker=True, label='Algorithm residual')
-        plt.scatter(x, yGT, s=2, picker=True, label='Ground Truth residual')
+        sc = plt.scatter(x, y, s=2, c=SEL.loc[use, 'dim'], picker=True, label='Algorithm residual')
+        plt.scatter(x, yGT, s=2, c=SEL.loc[use, 'dim'], picker=True, label='Ground Truth residual')
+        fig.colorbar(sc)
     
     ax = plt.gca()
 

@@ -68,14 +68,17 @@ class NR_corrector():
             var = np.zeros(M)
 
             for i in range(M):
-                x = np.abs(diff[(mp == i).any(axis=1)])
+                meas_i = (mp == i).any(axis=1)
+                sign_i = (mp == i)[:, 0].astype(int) \
+                            - (mp == i)[:, 1].astype(int)
+                x = diff[meas_i] * sign_i[meas_i]
                 var[i] = np.nanvar(x)**0.5
                 med[i] = np.nanmedian(x)
 
-            if np.nanmin(var / med) > 1e-1:
+            if np.nanmin(np.abs(var / med)) > 1e-1:
                 break
 
-            rem = np.nanargmin(var / med)
+            rem = np.nanargmin(np.abs(var / med))
 
             diffidx = np.where((mp == rem).any(axis=1)
                                & (~np.isnan(diff))
@@ -84,7 +87,7 @@ class NR_corrector():
             cond = mp[diffidx, 0] == rem
             flip = 1 if cond else -1
 
-            d = np.sign(diff[diffidx]) * flip * med[rem]
+            d = med[rem]
 
             if abs(d) < 5e4:
                 cur_corr = self.NR_corr[Nids[rem]-1][3] + self.alpha * d

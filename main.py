@@ -30,8 +30,8 @@ if False:
 
 #%% import
 
-use_pickle = False
-use_file = -1  # -1 --> competition; 1 through 7 --> training
+use_pickle = True
+use_file = 7  # -1 --> competition; 1 through 7 --> training
 
 MR, NR, SR = lib.read.importData(use_pickle, use_file)
 
@@ -144,6 +144,7 @@ npi = 0
 for idx, row in tqdm(TRA.iterrows(), total=len(TRA)):
     if (SOL.index == idx).any():
         try:
+            assert(False)
             assert(idx > 6*60/3600*len(TRA))
             
             xn_sph_np[npi], inDict = lib.ml.NLLS_MLAT(TRA, NR, idx, NR_c, 
@@ -187,19 +188,20 @@ el = time.time() - t
 print("\nTime taken: %f sec\n" % el)
 
 
-# TRA.to_pickle("./TRA_7_45d6b9_.pkl")
-# SOL.to_pickle("./SOL_7_45d6b9_.pkl")
-# with open('NRc_fvalGT_45d6b9.pkl', 'wb') as f:  # Python 3: open(..., 'wb')
+# TRA.to_pickle("./TRA_7_16c5dc_.pkl")
+# SOL.to_pickle("./SOL_7_16c5dc_.pkl")
+# with open('NRc_fvalGT_16c5dc_7.pkl', 'wb') as f:  # Python 3: open(..., 'wb')
 #     pickle.dump([NR_c, fval_GT], f)
 
 
 
 #%% Prune to trustworthy data
 
+# !!! do not touch anymore !!! #
 def prune(SEL):
-    # return SEL['fval'] > (10**(np.clip(8 + 0.5*np.clip(SEL['dim'] - 6, 0, 1e4)**0.55, 9, 12)))
+    return SEL['fval'] > (10**(np.clip(7 + 0.5*np.clip(SEL['dim'] - 6, 0, 1e4)**0.6, 5, 11)))
     # return (~SEL['Interior'] & SEL['fval'] > 0) | (SEL['dim'] < 3) | (SEL['fval'] > 1e9) # cheat!!!
-    return SEL['fval'] > 1e8
+    # return SEL['fval'] > 1e8
 
 TRA_temp, SOL_temp = lib.ml.PruneResults(TRA, SOL, prunefun=prune)
 
@@ -225,8 +227,6 @@ TRA_temp['fval_GT'] = np.nan
 TRA_temp['NormError'] = np.nan
 
 
-
-
 #%% do the filtering and interpolation
 
 TRA_temp['MLAT'] = False
@@ -246,7 +246,7 @@ for ac in tqdm(acs):
 #%% keep only best 50% by score
 
 covEst = len(TRA2[~np.isnan(TRA2['score'])]) / len(SOL2)
-keepPercentile = 0.50 / covEst
+keepPercentile = min(0.50 / covEst, 1)
 loseIndex = TRA2.index[TRA2['score'] > TRA2['score'].quantile(keepPercentile)]
 
 TRA3 = TRA2.copy()
@@ -266,7 +266,7 @@ print(cov*100)
 
 #%% write
 
-# lib.out.writeSolutions("../Comp1_a93e20.csv", SOL3)
+# lib.out.writeSolutions("../Comp1_16c5dc.csv", SOL3)
 # lib.out.writeSolutions("../Train7_a93e20.csv", SOL3)
 
 

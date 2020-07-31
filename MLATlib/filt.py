@@ -27,9 +27,12 @@ class aircraft():
         x_MLAT = SP2CART(self.SOLac[['lat', 'long', 'geoAlt']].to_numpy())
         x_cart = SP2CART(x_sph)
         
-        D = la.norm(x_MLAT - x_cart, axis=0)
+        D = la.norm(x_MLAT - x_cart, axis=1)
         Dnonan = D[~np.isnan(D)]
-        x_cart_nonan = x_cart[:, ~np.isnan(x_cart[0])]
+        x_cart_nonan = x_cart[~np.isnan(x_cart[:, 0])]
+        
+        if len(Dnonan) == 0:
+            return 0, Dnonan, x_cart_nonan
         
         Dfilt = Dnonan \
                 - np.abs(np.convolve(Dnonan, np.array([-1, 2, -1]),
@@ -45,19 +48,21 @@ class aircraft():
         
         if not self.recursive:
             # check if we even have data at all on the aircraft
-            if len(self.ids_nonan) == 0:
-                return 
+            # if len(self.ids_nonan) == 0:
+            #     return 
     
             # determine which points to use as nodes
             if usepnts == 'end':
-                idsn = self.ids_nonan[[0, -1]]
+                self.idsn = self.ids_nonan[[0, -1]]
+                self.idsn_np = [0, -1]
             elif usepnts == 'all':
-                idsn = self.ids_nonan
+                self.idsn = self.ids_nonan
+                self.idsn_np = range(len(self.idsn))
             elif usepnts == 'adaptive':
                 self.recursive = True
                 self.e_last = 1e9
                 self.addn = []
-                idsn = self.ids_nonan[[0, -1]]
+                self.idsn = self.ids_nonan[[0, -1]]
                 self.idsn_np = [0, -1]
             else:
                 raise ValueError("usepnts must be one of \
@@ -67,14 +72,14 @@ class aircraft():
                                  )
         elif usepnts == 'adaptive':
             self.idsn_np = [0] + self.addn + [-1]
-            idsn = self.ids_nonan[self.idsn_np]
+            self.idsn = self.ids_nonan[self.idsn_np]
             
         # all available time "t" if the aircraft
         ts = self.TRAac.loc[self.ids, 'MLATtime'].to_numpy()
 
         # get nodal values
-        tn = self.TRAac.loc[idsn, 'MLATtime'].to_numpy()
-        latn, longn, altn = self.SOLac.loc[idsn,
+        tn = self.TRAac.loc[self.idsn, 'MLATtime'].to_numpy()
+        latn, longn, altn = self.SOLac.loc[self.idsn,
                                            ['lat', 'long', 'geoAlt']]\
             .to_numpy().T
         
@@ -87,7 +92,8 @@ class aircraft():
         # estimate accuracy
         self.e, self.D, self.x_cart_nonan = self._InterpErrorEst(x_sph)
         
-        if self.recursive & (self.e > 125):  # and (self.e_last - self.e) > 0.01:
+        # !!! do not touch anymore !!!
+        if self.recursive & (self.e > 37):  # and (self.e_last - self.e) > 0.01:
             Dnonan = self.D[~np.isnan(self.D)]
             Dfilt = Dnonan \
                 - np.abs(np.convolve(Dnonan, np.array([-1, 2, -1]),
@@ -103,12 +109,12 @@ class aircraft():
             return
         else:
             # score the values by curvature of the nodes
-            x_nodes = self.x_cart_nonan[:, self.idsn_np]
-            cos_score = np.ones(len(x_nodes[0]))
-            Diff = np.diff(x_nodes, axis=1)
-            cos_score[1:-1] = np.sum(Diff[:, 0:-1] * (Diff[:, 1:]), axis=0)\
-                / (la.norm(Diff[:, 0:-1], axis=0)\
-                   * la.norm(Diff[:, 1:], axis=0)
+            x_nodes = self.x_cart_nonan[self.idsn_np]
+            cos_score = np.ones(len(x_nodes))
+            Diff = np.diff(x_nodes, axis=0)
+            cos_score[1:-1] = np.sum(Diff[0:-1] * (Diff[1:]), axis=1)\
+                / (la.norm(Diff[0:-1], axis=1)\
+                   * la.norm(Diff[1:], axis=1)
                    )
             cos_score[0] = cos_score[1]
             cos_score[-1] = cos_score[-2]
@@ -116,7 +122,7 @@ class aircraft():
             seg_score = (cos_score[0:-1] + cos_score[1:]) / 2
             
             scores = [[s] * len(
-                self.ids[(self.ids >= idsn[i]) & (self.ids < idsn[i+1])]
+                self.ids[(self.ids >= self.idsn[i]) & (self.ids < self.idsn[i+1])]
                 ) 
                 for i, s in enumerate(seg_score)
                 ]
@@ -133,7 +139,7 @@ class aircraft():
             
             # Flag the "true" MLAT nodes values used
             self.TRAac['MLAT'] = False
-            self.TRAac.loc[idsn, 'MLAT'] = True
+            self.TRAac.loc[self.idsn, 'MLAT'] = True
             
             # Flag the curvature score
             self.TRAac.loc[~np.isnan(self.TRAac['lat']), 'score'] = flat_scores
