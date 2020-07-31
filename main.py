@@ -42,7 +42,7 @@ MR, NR, SR = lib.read.importData(use_pickle, use_file)
 # or
 # select random data points with GT from MR set
 np.random.seed(2)
-use_SR = True
+use_SR = False
 K = 200000  # how many data points to read and use for validation
 p_vali = 0.05  # share of K used for validation
 
@@ -116,7 +116,7 @@ print(la.norm(SP2CART(x_sph) - SP2CART(plane_sph[0])))
 #%% initialize
 
 # clock corrector
-alpha = 4e-2
+alpha = 1.5e-1
 NR_c = lib.sync.NR_corrector(TRA, NR, alpha)
 
 # initialise solution dataframe
@@ -144,7 +144,6 @@ npi = 0
 for idx, row in tqdm(TRA.iterrows(), total=len(TRA)):
     if (SOL.index == idx).any():
         try:
-            assert(False)
             assert(idx > 6*60/3600*len(TRA))
             
             xn_sph_np[npi], inDict = lib.ml.NLLS_MLAT(TRA, NR, idx, NR_c, 
