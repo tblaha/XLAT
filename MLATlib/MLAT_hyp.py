@@ -384,7 +384,7 @@ def NLLS_MLAT(MR, NR, idx, NR_c, solmode='3d'):
 
     # ### get unix time stamps of stations
     Rs_corr = np.array([NR_c.NR_corr[i - 1][3] for i in stations])
-    Rs = np.array(pdcross['ns']) * 1e-9 * C0# + Rs_corr  # meters
+    Rs = np.array(pdcross['ns']) * 1e-9 * C0 + Rs_corr  # meters
 
     # baro radius
     if (solmode == '2d') or (solmode == '2drc'):

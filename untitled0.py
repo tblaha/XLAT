@@ -55,8 +55,8 @@ print(la.norm(SP2CART(x_sph[0], x_sph[1], x_sph[2])
               - SP2CART(x_sph_GT[0], x_sph_GT[1], x_sph_GT[2])
               ))
 
-xy_error = gc(tuple(x_sph[0:2]), tuple(x_sph_GT[0:2])).meters\
-    * (R0 + x_sph_GT[2]) / R0
+xy_error = gc(tuple(x_sph[0:2]), tuple(x_sph_GT[0:2])).meters
+   # * (R0 + x_sph_GT[2]) / R0
 
 print(xy_error)
 
