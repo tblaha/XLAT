@@ -24,15 +24,8 @@ class aircraft():
         self.itercnt = 0
 
     def _InterpErrorEst(self, x_sph):
-        x_MLAT = \
-            SP2CART(self.SOLac['lat'], 
-                    self.SOLac['long'], 
-                    self.SOLac['geoAlt']
-                    )
-        x_cart = SP2CART(x_sph[:, 0],
-                         x_sph[:, 1],
-                         x_sph[:, 2]
-                         )
+        x_MLAT = SP2CART(self.SOLac[['lat', 'long', 'geoAlt']].to_numpy())
+        x_cart = SP2CART(x_sph)
         
         D = la.norm(x_MLAT - x_cart, axis=0)
         Dnonan = D[~np.isnan(D)]

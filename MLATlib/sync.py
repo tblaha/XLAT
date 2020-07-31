@@ -22,9 +22,9 @@ class NR_corrector():
 
         self.NRnp = np.zeros([len(NR), 3])
         for index, row in NR.iterrows():
-            lat, long, geoh \
-                = NR.loc[index, ['lat', 'long', 'geoAlt']].to_numpy().T
-            self.NRnp[index - 1, :] = SP2CART(lat, long, geoh)
+            self.NRnp[index - 1, :] = SP2CART(
+                NR.loc[index, ['lat', 'long', 'geoAlt']].to_numpy()
+                )
 
         self.NR_corr = [list([[], [], [], 0]) for _ in range(len(NR))]
 
@@ -51,7 +51,7 @@ class NR_corrector():
         t = row.iat[0]
 
         x_sph_GT = row.iloc[[2, 3, 4]].to_numpy()
-        x_GT = SP2CART(x_sph_GT[0], x_sph_GT[1], x_sph_GT[2])
+        x_GT = SP2CART(x_sph_GT)
 
         Rs_GT = la.norm(x_GT - N, axis=1)
         RD_GT = (- Rs_GT[mp[:, 1]] + Rs_GT[mp[:, 0]])

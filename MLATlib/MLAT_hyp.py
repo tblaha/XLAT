@@ -5,7 +5,7 @@ Created on Tue Jun 23 22:40:56 2020
 @author: Till
 """
 
-from .helper import C0, R0, SP2CART, CART2SP
+from .helper import C0, SP2CART, CART2SP
 
 import numpy as np
 import numpy.linalg as la
@@ -75,36 +75,6 @@ def getHyperbolic(N, mp, dim, RD, R, Rd):
     A = V @ D @ V.swapaxes(1, 2)
 
     return A, V, D, b, singularity
-
-
-def getSphere(rho_baro):
-
-    # trivial eigenvectors
-    V = np.eye(3)
-
-    # equal eigenvalues
-    D = np.diag(1 / (rho_baro ** 2) * np.ones(3))
-
-    # trivial center point
-    b = np.zeros(3)
-
-    # A matrix
-    # A = V @ D @ V.T
-    A = D  # because V is eye-dentity anyway
-
-    return A, V, D, b
-
-
-def CON(x, C, mode=0):
-    # value. jacobian or hessian of the constraint
-    if mode == 0:
-        sol = x @ C @ x
-    elif mode == 1:
-        sol = 2 * (C @ x)
-    elif mode == 2:
-        sol = 2 * C
-
-    return sol
 
 
 def FJsq(x, A, b, dim, V, RD, Rn, mode=0, singularity=0):
@@ -240,7 +210,7 @@ def GenMeasurements(N, n, Rs):
     return mp, RD, R, Rn, RD_sc
 
 
-def genx0(N, mp, RD_sc, rho_baro):
+def genx0(N, mp, RD_sc, h_baro):
     # find index of most "central" measurement (least difference of Range
     # difference relative to station distance)
     x0_idx = np.where(abs(RD_sc) == np.min(abs(RD_sc)))[0][0]
@@ -250,10 +220,10 @@ def genx0(N, mp, RD_sc, rho_baro):
     x0 = N[mp[x0_idx, 0], :] + \
         (0.5 + RD_sc[x0_idx] / 2) * (N[mp[x0_idx, 1], :] - N[mp[x0_idx, 0], :])
 
-    # if rho_baro > 0:
+    # if h_baro is not np.nan:
     if True:
         std_mean = np.mean(N, axis=0)
-        x0 = std_mean / la.norm(std_mean) * rho_baro
+        x0 = std_mean / la.norm(std_mean) * h_baro
 
     return x0
 
@@ -274,7 +244,7 @@ def PruneResults(TRA, SOL, prunefun=None):
     return TRAt, SOLt
 
 
-def MLAT(N, n, Rs, rho_baro=-1, x0=None):
+def MLAT(N, n, Rs, h_baro=np.nan, x0=None):
 
     # ### check quality of measurements and discard accordingly
     # scale measurement to distance between stations
@@ -286,21 +256,19 @@ def MLAT(N, n, Rs, rho_baro=-1, x0=None):
     # ### calculate quadratic form
     A, V, D, b, singularity = getHyperbolic(N, mp, dim, RD, R, Rn)
 
-    if rho_baro >= 0:
-        # use aultitude info
-        C, __, __, __ = getSphere(rho_baro)
-
-        # define equality constraint
-        cons = sciop.NonlinearConstraint(lambda x: R0*CON(x, C, mode=0), R0, R0,
-                                         jac=lambda x: R0*CON(x, C, mode=1),
-                                         hess=lambda x, __: R0*CON(x, C, mode=2),
-                                         )
+    if h_baro is not np.nan:
+        # use aultitude info --> define equality constraint
+        cons = sciop.NonlinearConstraint(
+            lambda x: WGS84(x, h_baro, mode=0), 0, 0,
+            jac=lambda x: WGS84(x, h_baro, mode=1),
+            hess=lambda x, __: WGS84(x, h_baro, mode=2),
+            )
     else:
         cons = ()
 
     # ### generate x0
     if x0 is None:
-        x0 = genx0(N, mp, RD_sc, rho_baro)
+        x0 = genx0(N, mp, RD_sc, h_baro)
 
     # ### solve and record
     """xsol = sciop.least_squares(lambda x:
@@ -378,9 +346,7 @@ def NLLS_MLAT(MR, NR, idx, NR_c, solmode='3d'):
 
     # get station locations and convert to cartesian
     stations = np.array(pdcross['n'])
-    lats, longs, geoh \
-        = NR.loc[stations, ['lat', 'long', 'geoAlt']].to_numpy().T
-    N = SP2CART(lats, longs, geoh).T
+    N = SP2CART(NR.loc[stations, ['lat', 'long', 'geoAlt']].to_numpy())
 
     # ### get unix time stamps of stations
     Rs_corr = np.array([NR_c.NR_corr[i - 1][3] for i in stations])
@@ -388,20 +354,20 @@ def NLLS_MLAT(MR, NR, idx, NR_c, solmode='3d'):
 
     # baro radius
     if (solmode == '2d') or (solmode == '2drc'):
-        r_baro = pdcross['baroAlt'] + R0  # meters
+        h_baro = pdcross['baroAlt']  # meters
     else:
-        r_baro = -1
+        h_baro = np.nan
 
     # actually solve
     try:
         xn, opti, cost, nfev, niter, RD, inDict =\
-            MLAT(N, n, Rs, rho_baro=r_baro)
+            MLAT(N, n, Rs, h_baro=h_baro)
         
         if solmode == '2drc':
             xn, opti, cost, nfev, niter, RD, inDict =\
-                MLAT(N, n, Rs, rho_baro=-1, x0=xn)
+                MLAT(N, n, Rs, h_baro=np.nan, x0=xn)
 
-        xn_sph = CART2SP(xn[0], xn[1], xn[2])
+        xn_sph = CART2SP(xn)
 
         MR.at[idx, "xn_sph_lat"] = xn_sph[0]
         MR.at[idx, "xn_sph_long"] = xn_sph[1]

@@ -5,7 +5,7 @@ Created on Thu Jul 23 13:15:46 2020
 @author: Till
 """
 
-from .helper import R0, X, Y, Z, sind, cosd, CART2SP
+from .helper import CART2SP, SP2CART
 
 import numpy as np
 from numpy import linalg as la
@@ -134,10 +134,13 @@ def HyperPlot(MR, SR, NR, idx, x_sph, inDict, SQfield=False):
                             np.linspace(latl,
                                         latu, n_vals)
                             )
-    r = R0 + MR.at[idx, 'baroAlt']
-    x = r * cosd(long) * cosd(lat)
-    y = r * sind(long) * cosd(lat)
-    z = r *              sind(lat)
+    h = MR.at[idx, 'baroAlt'] * np.ones_like(long)
+    x = np.zeros_like(long)
+    y = np.zeros_like(long)
+    z = np.zeros_like(long)
+    
+    for i, __ in enumerate(long):
+        x[i], y[i], z[i] = SP2CART(np.array([lat[i], long[i], h[i]]).T).T
 
     F = np.zeros([inDict['dim'], n_vals, n_vals])
     Fsq = np.zeros([n_vals, n_vals])
@@ -174,7 +177,7 @@ def HyperPlot(MR, SR, NR, idx, x_sph, inDict, SQfield=False):
 
     # plot history
     xhist = np.array(inDict["xlist"])
-    xhist_sph = CART2SP(xhist[:, 0], xhist[:, 1], xhist[:, 2])
+    xhist_sph = CART2SP(xhist)
     pp.ax.plot(xhist_sph[1, :], xhist_sph[0, :],
                transform=ccrs.PlateCarree(),
                color='k',

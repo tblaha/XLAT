@@ -387,10 +387,10 @@ def insertFakePlanes(MR, NR, sph_pos, n, noise_amp=0):
     
         # get associated stations and convert to cartesian
         node_sph = np.array(NR.loc[nitem, ["lat", "long", "geoAlt"]])
-        node_cart = SP2CART(node_sph[:, 0], node_sph[:, 1], node_sph[:, 2]).T
+        node_cart = SP2CART(node_sph)
 
         # convert plane location to cartesian
-        cart_loc = SP2CART(sph_pos[idx, 0], sph_pos[idx, 1], sph_pos[idx, 2])
+        cart_loc = SP2CART(sph_pos[idx]).T
 
         # find nanoseconds TOA (in this case equal to TOT, since no offset)
         ns = la.norm(node_cart - cart_loc, axis=1) / C0 * 1e9

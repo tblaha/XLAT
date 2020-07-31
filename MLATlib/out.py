@@ -5,7 +5,7 @@ Created on Sun Jun 21 17:26:06 2020
 @author: Till
 """
 
-from .helper import R0, X, Y, Z, sind, cosd, CART2SP
+from .helper import SP2CART
 
 import numpy as np
 from numpy import linalg as la
@@ -31,7 +31,6 @@ def twoErrorCalc(x, z, RMSEnorm=2):
         RMSE.
 
     """
-    global R0, X, Y, Z
 
     # find the common indices (computed into x and preset in validation set z)
     sol_idx_bool = np.in1d(x.index, z.index)
@@ -48,8 +47,7 @@ def twoErrorCalc(x, z, RMSEnorm=2):
     for i in range(N):
         try:
             norm_vec[i] = gc((lat_x[i], long_x[i]),
-                             (lat_z[i], long_z[i])).meters\
-                            * (R0+h_z[i])/R0
+                             (lat_z[i], long_z[i])).meters
             if np.isnan(norm_vec[i]):
                 norm_vec[i] = 0
         except ValueError:
@@ -94,30 +92,22 @@ def threeErrorCalc(x, z, RMSEnorm=2, pnorm=2):
         RMSE.
 
     """
-    global R0, X, Y, Z
 
     # find the common indices (computed into x and preset in validation set z)
     sol_idx_bool = np.in1d(x.index, z.index)
 
     # get lat and longs and ground truth geo height
-    lat_x, long_x, h_x = \
-        np.array(x.loc[sol_idx_bool, ['lat', 'long', 'geoAlt']]).T
+    x_sph = np.array(x.loc[sol_idx_bool, ['lat', 'long', 'geoAlt']]
+                     ).to_numpy()
 
-    lat_z, long_z, h_z = \
-        np.array(z.loc[sol_idx_bool, ['lat', 'long', 'geoAlt']]).T
+    z_sph = z.loc[sol_idx_bool, ['lat', 'long', 'geoAlt']].to_numpy()
 
     # convert to cartesian
-    cart_x = [X(lat_x, long_x, h_x),
-              Y(lat_x, long_x, h_x),
-              Z(lat_x, long_x, h_x)
-              ]
-    cart_z = [X(lat_z, long_z, h_z),
-              Y(lat_z, long_z, h_z),
-              Z(lat_z, long_z, h_z)
-              ]
+    cart_x = SP2CART(x_sph)
+    cart_z = SP2CART(z_sph)
 
-    # compute great circle distances ("2d" error) between guess and truth
-    norm_vec = la.norm(np.array(cart_z) - np.array(cart_x), pnorm, 0)
+    # compute norm ("3d" error) between estimate and truth
+    norm_vec = la.norm(cart_z - cart_x, pnorm, 1)
     
     if (norm_vec > 0).any():
         # only use lower 99th percentile (reverse engineered)

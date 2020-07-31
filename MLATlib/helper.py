@@ -65,23 +65,23 @@ def arctan2d(z, x):
 # ----------------------------------------------------------------------------
 # https://en.wikipedia.org/wiki/Geographic_coordinate_conversion
 
-def WGS84(x, mode=0):
-    # mode == 0: return distance of x to the WGS84 surface
-    #               (approx 6ppm between +-50km from surface)
-    # mode == 1: return gradient vector pointing away from WGS84 surface
+def WGS84(x, h_baro, mode=0):
+    # mode == 0: return distance of x to the hbaro-offset WGS84 surface
+    #               (approx 6000ppm between +-50km from surface)
+    # mode == 1: return gradient vector pointing outward
     # mode == 2: return Hessian
-    A = np.diag(np.array([1/a,
-                          1/a,
-                          1/(a*(1 - f))
-                          ])**2
-                ) * R1
+    A = np.diag(1 / (np.array([a,
+                               a,
+                               a*(1 - f)
+                               ]) + h_baro)**2
+                )
     
     if mode == 0:
-        ret = 0.5 * (x @ A @ x - R1)
+        ret = 0.5 * R1 * (x @ A @ x - 1)
     elif mode == 1:
-        ret = (A @ x)
+        ret = R1 * (A @ x)
     elif mode == 2:
-        ret = A
+        ret = R1 * A
         
     return ret
 
@@ -89,6 +89,18 @@ def N(θ):
     # return the prime vertical radius of the ellipsoid along the circle 
     # defined by geodetic latitude θ
     return a / np.sqrt(1 - (e * sind(θ))**2)
+
+
+def pΕ(θ):
+    # return the distance between any point on the circle with geodetic 
+    # latitude θ and the centre of the earth
+    pvr = N(θ)
+    
+    # z = ((1 - e**2) * N(θ)) * sind(θ)
+    # zp = N(θ) * cosd(θ)
+    # ret = np.sqrt(z**2 + zp**2)
+    
+    return pvr * np.sqrt(1 - e**2*sind(θ)**2)
 
 
 def SP2CART(θφh):
@@ -116,8 +128,8 @@ def SP2CART(θφh):
     y = zp * sind(φ)
     
     # output
-    out = np.array([x, y, z]).T
-    return out
+    xyz = np.squeeze(np.array([x, y, z]).T)
+    return xyz
 
 
 def CART2SP(xyz):
@@ -150,5 +162,5 @@ def CART2SP(xyz):
     h = e**(-2) * (κ**(-1) - κ0**(-1)) * np.sqrt(zp**2 + z**2 * κ**2)
     
     # output
-    out = np.array([θ, φ, h]).T
-    return out
+    θφh = np.squeeze(np.array([θ, φ, h]).T)
+    return θφh
