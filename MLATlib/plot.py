@@ -178,7 +178,7 @@ def HyperPlot(MR, SR, NR, idx, x_sph, inDict, SQfield=False):
     # plot history
     xhist = np.array(inDict["xlist"])
     xhist_sph = CART2SP(xhist)
-    pp.ax.plot(xhist_sph[1, :], xhist_sph[0, :],
+    pp.ax.plot(xhist_sph[:, 1], xhist_sph[:, 0],
                transform=ccrs.PlateCarree(),
                color='k',
                marker='.',

@@ -5,7 +5,7 @@ Created on Tue Jun 23 22:40:56 2020
 @author: Till
 """
 
-from .helper import C0, SP2CART, CART2SP
+from .helper import C0, SP2CART, CART2SP, WGS84, R1
 
 import numpy as np
 import numpy.linalg as la
@@ -154,7 +154,7 @@ def GenMeasurements(N, n, Rs):
 
     # ###determine usable measurements
     # lambda >0.99
-    lamb_idx = np.where(abs(RD_sc) > 0.9)[0].astype(int)
+    lamb_idx = np.where(abs(RD_sc) > 0.85)[0].astype(int)
     lamb_idx_N = mp[lamb_idx]
     z = np.zeros([len(lamb_idx), 3])
     z[:, 0] = lamb_idx
@@ -181,7 +181,6 @@ def GenMeasurements(N, n, Rs):
     # combine
     m_use = ~bad_meas_prox & ~bad_meas_lamb
     m_use[lamb_idx] = False
-    m_use[[2, 4, 5]] = False
 
     # alternative: only discard lambda > 0.99
     # m_use = abs(RD_sc) < 0.99
@@ -190,7 +189,7 @@ def GenMeasurements(N, n, Rs):
     # m_use = np.ones(len(mp)).astype(bool)
 
     # error if not enough stations left
-    Kmin = 3
+    Kmin = 4
     if len(RD_sc) < Kmin:
         raise MLATError(1)
         # raise MLATError("Not enough measurements available")
@@ -223,7 +222,7 @@ def genx0(N, mp, RD_sc, h_baro):
     # if h_baro is not np.nan:
     if True:
         std_mean = np.mean(N, axis=0)
-        x0 = std_mean / la.norm(std_mean) * h_baro
+        x0 = std_mean / la.norm(std_mean) * (R1 + h_baro)
 
     return x0
 
@@ -282,13 +281,13 @@ def MLAT(N, n, Rs, h_baro=np.nan, x0=None):
                     x0,
                     jac=lambda x: FJsq(x, A, b, dim, V, RD, Rn, mode=1),
                     hess=lambda x: 0.25*FJsq(x, A, b, dim, V, RD, Rn, mode=2),
-                    method='trust-constr',
+                    method='SLSQP',
                     tol=1e-3,
                     constraints=cons,
                     options={'maxiter': 100,
-                             'xtol': 0.1,
+                             # 'xtol': 0.1,
                              },
-                    callback=lambda xk, __: xlist.append(xk),
+                    callback=lambda xk: xlist.append(xk),
                     )
 
     

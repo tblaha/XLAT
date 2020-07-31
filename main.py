@@ -31,7 +31,7 @@ if False:
 #%% import
 
 use_pickle = False
-use_file = 7  # -1 --> competition; 1 through 7 --> training
+use_file = -1  # -1 --> competition; 1 through 7 --> training
 
 MR, NR, SR = lib.read.importData(use_pickle, use_file)
 
@@ -43,7 +43,7 @@ MR, NR, SR = lib.read.importData(use_pickle, use_file)
 # select random data points with GT from MR set
 np.random.seed(2)
 use_SR = True
-K = 20000  # how many data points to read and use for validation
+K = 200000  # how many data points to read and use for validation
 p_vali = 0.05  # share of K used for validation
 
 
@@ -54,7 +54,7 @@ TRA, VAL = lib.read.segmentData(MR, use_SR, SR, K=K, p=p_vali)
 
 
 #%% fakes for debugging
-
+"""
 # fake nodes
 node_sph = np.array([[50 ,11, 0],
                      [50 ,9, 0],
@@ -80,11 +80,11 @@ VAL.loc[idx_fake_planes[0], ['lat', 'long', 'geoAlt']] = \
     TRA.loc[idx_fake_planes[0], ['lat', 'long', 'geoAlt']]
 
 TRA.loc[idx_fake_planes[0], ['lat', 'long', 'geoAlt']] = np.nan
-
+"""
 
 
 #%% single plane stuff
-
+"""
 # select measurement to compute stuff for
 # seek_id = 9999999 # fake plane
 # seek_id = 111376 # some actually existing plane
@@ -110,11 +110,9 @@ x_sph, inDict = lib.ml.NLLS_MLAT(TRA, NR, seek_id, NR_c_sp, solmode='2d')
 
 pp = lib.plot.HyperPlot(TRA, VAL, NR, seek_id, x_sph, inDict, SQfield=True)
 
-print(la.norm(SP2CART(x_sph[0], x_sph[1], x_sph[2]) 
-              - SP2CART(plane_sph[0,0], plane_sph[0,1], plane_sph[0,2])
-              ))
+print(la.norm(SP2CART(x_sph) - SP2CART(plane_sph[0])))
 
-
+"""
 #%% initialize
 
 # clock corrector
@@ -130,8 +128,7 @@ xn_sph_np = np.zeros([len(SOL), 3])
 xn_sph_np[:, :] = np.nan
 
 # ground truth as np
-lats, longs, alts = VAL.to_numpy().T
-x_GT = SP2CART(lats, longs, alts).T
+x_GT = SP2CART(VAL.to_numpy())
 fval_GT = np.zeros(len(SOL))
 fval_GT[:] = np.nan
 
@@ -147,7 +144,6 @@ npi = 0
 for idx, row in tqdm(TRA.iterrows(), total=len(TRA)):
     if (SOL.index == idx).any():
         try:
-            assert(False)
             assert(idx > 6*60/3600*len(TRA))
             
             xn_sph_np[npi], inDict = lib.ml.NLLS_MLAT(TRA, NR, idx, NR_c, 
@@ -191,10 +187,10 @@ el = time.time() - t
 print("\nTime taken: %f sec\n" % el)
 
 
-TRA.to_pickle("./TRA_7_45d6b9_.pkl")
-SOL.to_pickle("./SOL_7_45d6b9_.pkl")
-with open('NRc_fvalGT_45d6b9.pkl', 'wb') as f:  # Python 3: open(..., 'wb')
-    pickle.dump([NR_c, fval_GT], f)
+# TRA.to_pickle("./TRA_7_45d6b9_.pkl")
+# SOL.to_pickle("./SOL_7_45d6b9_.pkl")
+# with open('NRc_fvalGT_45d6b9.pkl', 'wb') as f:  # Python 3: open(..., 'wb')
+#     pickle.dump([NR_c, fval_GT], f)
 
 
 
@@ -202,8 +198,8 @@ with open('NRc_fvalGT_45d6b9.pkl', 'wb') as f:  # Python 3: open(..., 'wb')
 
 def prune(SEL):
     # return SEL['fval'] > (10**(np.clip(8 + 0.5*np.clip(SEL['dim'] - 6, 0, 1e4)**0.55, 9, 12)))
-    return (~SEL['Interior'] & SEL['fval'] > 0) | (SEL['dim'] < 3) | (SEL['fval'] > 1e9) # cheat!!!
-    # return SEL['fval'] > 1e20
+    # return (~SEL['Interior'] & SEL['fval'] > 0) | (SEL['dim'] < 3) | (SEL['fval'] > 1e9) # cheat!!!
+    return SEL['fval'] > 1e8
 
 TRA_temp, SOL_temp = lib.ml.PruneResults(TRA, SOL, prunefun=prune)
 
