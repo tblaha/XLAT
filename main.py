@@ -30,8 +30,8 @@ if False:
 
 #%% import
 
-use_pickle = True
-use_file = 7  # -1 --> competition; 1 through 7 --> training
+use_pickle = False
+use_file = -1  # -1 --> competition; 1 through 7 --> training
 
 MR, NR, SR = lib.read.importData(use_pickle, use_file)
 
@@ -42,7 +42,7 @@ MR, NR, SR = lib.read.importData(use_pickle, use_file)
 # or
 # select random data points with GT from MR set
 np.random.seed(2)
-use_SR = False
+use_SR = True
 K = 200000  # how many data points to read and use for validation
 p_vali = 0.05  # share of K used for validation
 
@@ -116,7 +116,7 @@ print(la.norm(SP2CART(x_sph) - SP2CART(plane_sph[0])))
 #%% initialize
 
 # clock corrector
-alpha = 1.5e-1
+alpha = 2e-1
 NR_c = lib.sync.NR_corrector(TRA, NR, alpha)
 
 # initialise solution dataframe
@@ -187,9 +187,9 @@ el = time.time() - t
 print("\nTime taken: %f sec\n" % el)
 
 
-# TRA.to_pickle("./TRA_7_16c5dc_.pkl")
-# SOL.to_pickle("./SOL_7_16c5dc_.pkl")
-# with open('NRc_fvalGT_16c5dc_7.pkl', 'wb') as f:  # Python 3: open(..., 'wb')
+# TRA.to_pickle("./TRA_7_da421b_.pkl")
+# SOL.to_pickle("./SOL_7_da421b_.pkl")
+# with open('NRc_fvalGT_da421b_7.pkl', 'wb') as f:  # Python 3: open(..., 'wb')
 #     pickle.dump([NR_c, fval_GT], f)
 
 
@@ -257,7 +257,7 @@ SOL3.loc[loseIndex, ['lat', 'long', 'geoAlt']] = np.nan
 
 #%% Print final accuracy
 
-RMSE, cov, nv = lib.out.twoErrorCalc(SOL3, VAL, RMSEnorm=2)
+RMSE, cov, nv = lib.out.twoErrorCalc(SOL2, VAL, RMSEnorm=2)
 
 print(RMSE)
 print(cov*100)
@@ -265,8 +265,8 @@ print(cov*100)
 
 #%% write
 
-# lib.out.writeSolutions("../Comp1_16c5dc.csv", SOL3)
-# lib.out.writeSolutions("../Train7_a93e20.csv", SOL3)
+lib.out.writeSolutions("../Comp1_da421b_0.2.csv", SOL3)
+# lib.out.writeSolutions("../Train7_da421b.csv", SOL3)
 
 
 #%% sort the final data frames and append with some GT data

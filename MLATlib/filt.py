@@ -22,6 +22,8 @@ class aircraft():
         
         self.recursive = False
         self.itercnt = 0
+        
+        self.eTH = 37
 
     def _InterpErrorEst(self, x_sph):
         x_MLAT = SP2CART(self.SOLac[['lat', 'long', 'geoAlt']].to_numpy())
@@ -93,7 +95,7 @@ class aircraft():
         self.e, self.D, self.x_cart_nonan = self._InterpErrorEst(x_sph)
         
         # !!! do not touch anymore !!!
-        if self.recursive & (self.e > 37):  # and (self.e_last - self.e) > 0.01:
+        if self.recursive & (self.e > self.eTH):  # and (self.e_last - self.e) > 0.01:
             Dnonan = self.D[~np.isnan(self.D)]
             Dfilt = Dnonan \
                 - np.abs(np.convolve(Dnonan, np.array([-1, 2, -1]),
