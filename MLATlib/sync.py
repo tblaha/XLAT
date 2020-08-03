@@ -5,30 +5,53 @@ Created on Mon Jul 27 14:17:30 2020
 @author: Till
 """
 
-from .helper import C0, SP2CART
+from .helper import (
+    SP2CART,  # convert geodetic data [lat, long, alt] to ECEF [x, y, z]
+    C0  # C0: vacuum speed of light
+    )
 
 import numpy as np
 import numpy.linalg as la
 
 
 class Station_corrector():
+    """
+    Provides clock correction in meters (self.NR_corr[i][3]) by using ADS-B 
+    measurements to update the correction.
+    
+    """
     def __init__(self, TRA, NR, alpha):
+        
+        # discrete filter constant
         self.alpha = alpha
 
-        self.mps = list()
+        # generate all possible maps (TDOA measurement id --> pair of stations)
+        self.maps = list()
         for n in range(max(TRA['M']) + 1):
             mp = np.array([[i, j] for i in range(n) for j in range(i+1, n)])
-            self.mps.append(mp)
+            self.maps.append(mp)
 
-        self.NRnp = np.zeros([len(NR), 3])
-        for index, row in NR.iterrows():
-            self.NRnp[index - 1, :] = SP2CART(
-                NR.loc[index, ['lat', 'long', 'geoAlt']].to_numpy()
-                )
+        # generate a numpy array to hold all of the station's ECEF locations
+        # (for faster access)
+        self.NRnp = SP2CART(NR[['lat', 'long', 'geoAlt']].to_numpy())
 
+        # initialize the Station clock correction list
+        # NR_corr[n - 1][0] --> list of server times at time of correction
+        # NR_corr[n - 1][1] --> list of drifts of correction wrt to previous
+        # NR_corr[n - 1][2] --> list of total clock correction
+        # NR_corr[n - 1][3] --> current clock correction
         self.NR_corr = [list([[], [], [], 0]) for _ in range(len(NR))]
 
     def AbsoluteSync(self):
+        """ this is unused """
+        
+        # the relative sync is prone to "absolute drifts" after some time 
+        # (hours), since it doesn't matter if the relative reciever times are 
+        # meaningful in the absolute sense --> gotta do an Absolute Sync every
+        # once in a 2hile
+        # BUT:
+        # TODO: not like this... this, for some reason this induces 
+        #       oscillations
         clockErrors = np.array(
             [self.NR_corr[i][3] for i in range(len(self.NR_corr))]
             )
@@ -41,11 +64,15 @@ class Station_corrector():
             self.NR_corr[i][3] += correct
 
     def RelativeSync(self, row, idx):
+        # correct clocks by comparing ground truth TDOA (or rather Range 
+        # Differences) to the measurements and trying to infere which station
+        # is off by looking at variances and means of the TDOA errors
+        
         M = row.iat[6]
         if M < 3:
             return
 
-        mp = self.mps[M]
+        mp = self.maps[M]
         Nids = np.array(row.iat[8])
         N = self.NRnp[Nids - 1]
         t = row.iat[0]
@@ -85,20 +112,21 @@ class Station_corrector():
                                )[0][-1]
 
             cond = mp[diffidx, 0] == rem
-            flip = 1 if cond else -1
 
             d = med[rem]
 
             if abs(d) < 5e4:
-                cur_corr = self.NR_corr[Nids[rem]-1][3] + self.alpha * d
-                self.NR_corr[Nids[rem]-1][0].append(t)
-                self.NR_corr[Nids[rem]-1][1].append(d)
-                self.NR_corr[Nids[rem]-1][2].append(cur_corr)
-                self.NR_corr[Nids[rem]-1][3] = cur_corr
+                cur_corr = self.NR_corr[Nids[rem] - 1][3] + self.alpha * d
+                self.NR_corr[Nids[rem] - 1][0].append(t)
+                self.NR_corr[Nids[rem] - 1][1].append(d)
+                self.NR_corr[Nids[rem] - 1][2].append(cur_corr)
+                self.NR_corr[Nids[rem] - 1][3] = cur_corr
 
             diff[(mp == rem).any(axis=1)] = np.nan
             
     def ReconstructClocks(self, tserver, n):
+        """ not used in the final code, just for debugging after the fact"""
+        
         NR_idx = n - 1
 
         for i in NR_idx:

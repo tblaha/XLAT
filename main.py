@@ -109,7 +109,7 @@ for idx, row in tqdm(TRA.iterrows(), total=len(TRA)):
         try:
             # don't compute anything in the first 6 minutes because the clocks
             # are not correct yet
-            # --> TODO: do this properly with row['t']
+            # TODO: do this properly with row['t']
             assert(idx > 6*60/3600*len(TRA))
 
             """attempt MLAT calculation"""

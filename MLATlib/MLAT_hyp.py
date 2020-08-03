@@ -345,7 +345,7 @@ def NLLS_MLAT(MR, NR, idx, NR_c, solmode='3d'):
     try:
         xn, opti, cost, nfev, niter, RD, inDict =\
             MLAT(N, n, Rs, h_baro=h_baro)
-        
+
         if solmode == '2drc':
             xn, opti, cost, nfev, niter, RD, inDict =\
                 MLAT(N, n, Rs, h_baro=np.nan, x0=xn)
