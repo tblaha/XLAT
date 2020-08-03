@@ -23,7 +23,7 @@ class aircraft():
         self.recursive = False
         self.itercnt = 0
         
-        self.eTH = 37
+        self.eTH = 40
 
     def _InterpErrorEst(self, x_sph):
         x_MLAT = SP2CART(self.SOLac[['lat', 'long', 'geoAlt']].to_numpy())

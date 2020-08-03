@@ -11,7 +11,7 @@ import numpy as np
 import numpy.linalg as la
 
 
-class NR_corrector():
+class Station_corrector():
     def __init__(self, TRA, NR, alpha):
         self.alpha = alpha
 

@@ -227,22 +227,6 @@ def genx0(N, mp, RD_sc, h_baro):
     return x0
 
 
-def PruneResults(TRA, SOL, prunefun=None):
-    
-    TRAt = TRA.copy()
-    SOLt = SOL.copy()
-
-    if prunefun is None:
-        prunefun = lambda TRAt: TRAt['fval'] > 1e8
-
-    idx_prune = TRAt.loc[prunefun(TRAt)].index
-    TRAt.loc[idx_prune, ["lat", "long", "geoAlt"]] = np.nan
-    TRAt.loc[idx_prune, "MLAT_status"] = 4
-    SOLt.loc[idx_prune, ["lat", "long", "geoAlt"]] = np.nan
-
-    return TRAt, SOLt
-
-
 def MLAT(N, n, Rs, h_baro=np.nan, x0=None):
 
     # ### check quality of measurements and discard accordingly
