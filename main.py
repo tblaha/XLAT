@@ -10,6 +10,7 @@ Created on Sun Jun 21 17:07:51 2020
 
 import MLATlib as lib  # the main libraries that do the heavy lifting
 from MLATlib.helper import (
+    CART2SP,
     SP2CART,  # convert geodetic data [lat, long, alt] to ECEF [x, y, z]
     C0  # C0: vacuum speed of light
     )
@@ -25,7 +26,7 @@ from tqdm import tqdm  # awesome progress bar for iterative loops
 #%% import
 
 use_pickle = False  # False --> use unmodified .csv (slow)
-use_file = -1  # -1 --> competition; 1 through 7 --> training
+use_file = 7  # -1 --> competition; 1 through 7 --> training
 
 (Measurements,  # the huge 2M lines csv as pandas DF
  Stations,  # the stations with their location and so on
@@ -52,9 +53,68 @@ use_Results = True
 
 
 #%% investigate single measurment with plots
-"""
-<<< Removed >>>
-"""
+
+# select measurement to compute stuff for
+# seek_id = 9999999 # fake plane
+# seek_id = 111376 # some actually existing plane
+# seek_id = 254475  # 3 stations, simple case
+# seek_id = 1766269  # 4 stations, plane outside of interior
+# seek_id = 880317 #  6 stations
+# seek_id = 1857132  # 2 close stations mess it up
+# seek_id = 1820733  # 2 close stations mess it up
+# seek_id = 1028881  # 2 close stations mess it up
+# seek_id = 1524975  # unknown convergence error
+# seek_id = 29421  # hot mess..
+# seek_id = 503201  # best fit
+# seek_id = 1823621  # 2 close stations mess it up
+seek_id = 1869529
+# seek_id = 1809908
+
+# seek_id = idx_fake_planes[0]
+
+NR_c_sp = lib.sync.Station_corrector(TRA, Stations, 0.1)
+
+
+
+ # ### preprocess stations and measurements
+# get number of stations
+n = TRA.loc[seek_id, 'M']
+
+# get station locations and convert to cartesian
+stations = np.array(TRA.loc[seek_id, 'n'])
+N = SP2CART(Stations.loc[stations, ['lat', 'long', 'geoAlt']].to_numpy())
+
+# ### get unix time stamps of stations
+Rs_corr = np.array([NR_c_sp.NR_corr[i - 1][3] for i in stations])
+Rs = np.array(TRA.loc[seek_id, 'ns']) * 1e-9 * C0 + Rs_corr  # meters
+
+# baro radius
+h_baro = TRA.loc[seek_id, 'baroAlt']  # meters
+
+# gen measurements
+mp, RD, R, Rn, RD_sc = lib.ml.GenMeasurements(N, n, Rs)
+
+# determine problem size
+dim = len(mp)
+
+# ### calculate quadratic form
+A, V, D, b, singularity = lib.ml.getHyperbolic(N, mp, dim, RD, R, Rn)
+
+# ### generate x0
+x0 = lib.ml.genx0(N, mp, RD_sc, h_baro)
+
+# build diagnostic struct
+inDict = {'A': A, 'b': b, 'V': V, 'D': D, 'dim': dim, 'RD': RD, 'xn': x0,
+          'fun': lambda x, m: lib.ml.FJsq(x, A, b, dim, V, RD, Rn, mode=m),
+          'xlist': np.zeros([2, 3]), 'ecode': 0, 'mp': mp, 'Rn': Rn, 'sol': {}}
+
+
+# start MLAT calculations
+#x_sph, inDict = lib.ml.Pandas_Wrapper(TRA, Stations, seek_id, NR_c_sp, solmode='2d')
+
+pp = lib.plot.HyperPlot(TRA, VAL, Stations, seek_id, CART2SP(x0), inDict, SQfield=False)
+
+#print(la.norm(SP2CART(x_sph) - SP2CART(plane_sph[0])))
 
 
 #%% initialize

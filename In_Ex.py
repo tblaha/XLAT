@@ -12,7 +12,7 @@ from matplotlib.path import Path
 
 from tqdm import tqdm
 
-NRnp = NR[['lat', 'long', 'geoAlt']].to_numpy()
+NRnp = Stations[['lat', 'long', 'geoAlt']].to_numpy()
 # VALnp = VAL[['lat', 'long', 'geoAlt']].to_numpy()
 
 i = 0
