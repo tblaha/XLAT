@@ -8,8 +8,6 @@ Created on Thu Jul 23 13:15:46 2020
 from .helper import CART2SP, SP2CART
 
 import numpy as np
-from numpy import linalg as la
-from geopy.distance import great_circle as gc
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
