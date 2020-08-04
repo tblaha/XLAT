@@ -1,6 +1,6 @@
 # XLAT
 
-will contain my entry to https://www.aicrowd.com/challenges/cyd-campus-aircraft-localization-competition
+Switch to branch "Round1" for code and instructions to reproduce my entry to Round 1 of: https://www.aicrowd.com/challenges/cyd-campus-aircraft-localization-competition
 
 
 ## Installation
