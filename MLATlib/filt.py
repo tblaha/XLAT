@@ -5,11 +5,10 @@ Created on Tue Jul 28 15:55:50 2020
 @author: Till
 """
 
+from .helper import SP2CART
 
 import numpy as np
 import numpy.linalg as la
-from geopy.distance import great_circle as gc
-from .helper import SP2CART
 
 
 class aircraft():
@@ -23,7 +22,7 @@ class aircraft():
         self.recursive = False
         self.itercnt = 0
         
-        self.eTH = 40
+        self.eTH = 37
 
     def _InterpErrorEst(self, x_sph):
         x_MLAT = SP2CART(self.SOLac[['lat', 'long', 'geoAlt']].to_numpy())
@@ -132,7 +131,8 @@ class aircraft():
             
             flat_scores = [item for sublist in scores for item in sublist]
                 
-            # assign cos score to _all points_ that were interpolated by the nodes in question --> avg somehow for the in-between nodes
+            # assign cos score to _all points_ that were interpolated by the 
+            # nodes in question --> avg somehow for the in-between nodes
             # after the fact, prune again by maximum cos score
 
             # write down
@@ -148,26 +148,3 @@ class aircraft():
             
             return
         
-
-
-"""
-
-    cur_id = TRA.loc[TRA['ac'] == ac].index
-    cur_id = SOL2.index.intersection(cur_id)
-    tempSOL = SOL2.loc[cur_id, 'long']
-    cur_nonans = tempSOL.index[~np.isnan(tempSOL)]
-
-    t = TRA.loc[cur_id, 't']
-    t_nonan = t[cur_nonans].to_numpy()
-
-    long = SOL.loc[cur_nonans, 'long'].to_numpy()
-    lat = SOL.loc[cur_nonans, 'lat'].to_numpy()
-
-    if len(lat):
-        SOL2.at[cur_id, 'long'] = np.interp(t, t_nonan, long,
-                                            left=np.nan, right=np.nan)
-        SOL2.at[cur_id, 'lat'] = np.interp(t, t_nonan, lat,
-                                           left=np.nan, right=np.nan)
-
-        TRA.loc[cur_id, ['long', 'lat']] = SOL2.loc[cur_id, ['long', 'lat']]
-"""

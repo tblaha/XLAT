@@ -1,33 +1,63 @@
 # XLAT
 
-will contain my entry to https://www.aicrowd.com/challenges/cyd-campus-aircraft-localization-competition
+This branch contains my entry to Round 1 of the A/C localization challenge https://www.aicrowd.com/challenges/cyd-campus-aircraft-localization-competition
 
 
-## Installation
+## Technical Documentation
+
+Either: See submodule XLAT-docs for LATEX files. 
+Or: Sharelatex can be viewed @ https://www.overleaf.com/read/fbbzchxgsxwy
+
+
+## Prerequisites
 
 installed via conda on Windows:
-- geopy 
-- cartoy
-- (numpy)
-- (pandas)
-- mayavi and vtk (plus dependencies) https://docs.enthought.com/mayavi/mayavi/installation.html#installing-with-conda-forge
+- geopy
+- cartopy
+- numpy
+- scipy
+- pandas
 
-keep XLAT folder in same folder as "training_1_round_1" and so on.
 
-## mayavi install 
-pip didn't work for some dependency reasons, so i jumped to the conda section of https://docs.enthought.com/mayavi/mayavi/installation.html#installing-with-conda-forge
-it's slightly modified, so that it installs onto the base system
+## Directory Structure
 
-install:
- conda config --add channels conda-forge
- conda install vtk=8.2.0 # make sure this version is selected in the anaconda base environment
- conda install pyqt=4 # this was already done by something and then failed to resolve deps; this step was essentially skipped
- conda install mayavi
-
-test:
- mayavi2
- python C:\Users\<username>\anaconda3\pkgs\mayavi-4.7.1-py37hf36c280_0\info\test\run_test.py
-
-## Working principle
-
-(TBA)
+<pre>
+D:.
++---XLAT
+|   |   .gitignore
+|   |   LICENSE
+|   |   main.py
+|   |   README.md
+|   |
+|   \---MLATlib
+|       |   __init__.py
+|       |  filt.py
+|       ...
+|
+\---Data
+    +---competition_evaluation
+    |       round1_competition.csv
+    |       round1_sample_empty.csv
+    |       sensors.csv
+    |       
+    \---training_dataset
+        +---training_1_category_1
+        |       OpenSky_TERMS.txt
+        |       sensors.csv
+        |       training_1_category_1.csv
+        |       
+        +---training_1_category_1_result
+        |       OpenSky_TERMS.txt
+        |       sensors.csv
+        |       training_1_category_1_result.csv
+        |       
+        +---training_2_category_1
+        |
+        ...
+        |
+        \---training_7_category_1_result
+                OpenSky_TERMS.txt
+                sensors.csv
+                training_7_category_1_result.csv
+                
+</pre>

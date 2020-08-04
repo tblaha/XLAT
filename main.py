@@ -5,6 +5,7 @@ Created on Sun Jun 21 17:07:51 2020
 @author: Till
 """
 
+
 #%% modules
 
 import MLATlib as lib  # the main libraries that do the heavy lifting
@@ -115,12 +116,13 @@ for idx, row in tqdm(TRA.iterrows(), total=len(TRA)):
             """attempt MLAT calculation"""
             (xn_sph_np[npi],  # spherical location estimate [lat, long, alt]
              DebugDict,       # additional debugging information
-             ) = lib.ml.NLLS_MLAT(TRA,           # the measurement
-                                  Stations,      # the stations
-                                  idx,           # the index for which to solve
-                                  Sta_corr,      # station clock corrector
-                                  solmode='2d',  # solve 2d using baroAlt
-                                  )
+             ) = lib.ml.Pandas_Wrapper(
+                     TRA,           # the measurements
+                     Stations,      # the stations
+                     idx,           # the index for which to solve
+                     Sta_corr,      # station clock corrector
+                     solmode='2d',  # solve 2d using baroAlt
+                     )
 
             if len(DebugDict):
                 # calculation was successful
@@ -256,7 +258,7 @@ print(cov*100)
 
 #%% write solution
 
-lib.out.writeSolutions("../Comp1_da421b_0.2_40_1.0.csv", SOL_top50)
+lib.out.writeSolutions("../Comp1_da421b_0.2_37_1.0.csv", SOL_top50)
 # lib.out.writeSolutions("../Train7_da421b.csv", SOL_top50)
 
 

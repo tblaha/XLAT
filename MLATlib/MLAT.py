@@ -227,7 +227,7 @@ def genx0(N, mp, RD_sc, h_baro):
     return x0
 
 
-def MLAT(N, n, Rs, h_baro=np.nan, x0=None):
+def solve(N, n, Rs, h_baro=np.nan, x0=None):
 
     # ### check quality of measurements and discard accordingly
     # scale measurement to distance between stations
@@ -291,7 +291,7 @@ def MLAT(N, n, Rs, h_baro=np.nan, x0=None):
     return xn, opti, cost, nfev, niter, RD, inDict
 
 
-def NLLS_MLAT(MR, NR, idx, NR_c, solmode='3d'):
+def Pandas_Wrapper(MR, NR, idx, NR_c, solmode='2d'):
     """
     Wrapper of the iterative non-linear least squares calculation for ac
     position including preprocessing of the Station coordinates, TDOA and
@@ -344,11 +344,11 @@ def NLLS_MLAT(MR, NR, idx, NR_c, solmode='3d'):
     # actually solve
     try:
         xn, opti, cost, nfev, niter, RD, inDict =\
-            MLAT(N, n, Rs, h_baro=h_baro)
+            solve(N, n, Rs, h_baro=h_baro)
 
         if solmode == '2drc':
             xn, opti, cost, nfev, niter, RD, inDict =\
-                MLAT(N, n, Rs, h_baro=np.nan, x0=xn)
+                solve(N, n, Rs, h_baro=np.nan, x0=xn)
 
         xn_sph = CART2SP(xn)
 

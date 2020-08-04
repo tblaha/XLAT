@@ -11,11 +11,13 @@ import pandas as pd
 
 def importData(use_pickle, use_file):
     if use_file == -1:
-        path = "../Data/round1_competition"
+        path = "../Data/competition_evaluation"
+        results_path = path
         fnameMR = "round1_competition.csv"
         fnameSR = "round1_sample_empty.csv"
     elif use_file > 0:
-        path = "../Data/training_"+str(use_file)+"_category_1"
+        path = "../Data/training_dataset/training_"+str(use_file)+"_category_1"
+        results_path = path+"/result"
         fnameMR = "training_"+str(use_file)+"_category_1.csv"
         fnameSR = "training_"+str(use_file)+"_category_1_result.csv"
 
@@ -35,7 +37,7 @@ def importData(use_pickle, use_file):
     if os.path.isfile("./SR.pkl") and use_pickle:
         SR = pd.read_pickle("./SR.pkl")
     else:
-        SR = readSolutions(path+"_result/"+fnameSR)
+        SR = readSolutions(results_path+"/"+fnameSR)
         SR.to_pickle("./SR.pkl")
 
     return MR, NR, SR
