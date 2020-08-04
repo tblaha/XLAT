@@ -17,7 +17,7 @@ def importData(use_pickle, use_file):
         fnameSR = "round1_sample_empty.csv"
     elif use_file > 0:
         path = "../Data/training_dataset/training_"+str(use_file)+"_category_1"
-        results_path = path+"/result"
+        results_path = path+"_result"
         fnameMR = "training_"+str(use_file)+"_category_1.csv"
         fnameSR = "training_"+str(use_file)+"_category_1_result.csv"
 
