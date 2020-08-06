@@ -92,26 +92,20 @@ class Station_corrector():
 
         while sum((~np.isnan(diff)).astype(int)) > 1:
             med = np.zeros(M)
-            var = np.zeros(M)
+            std = np.zeros(M)
 
             for i in range(M):
                 meas_i = (mp == i).any(axis=1)
                 sign_i = (mp == i)[:, 0].astype(int) \
                             - (mp == i)[:, 1].astype(int)
                 x = diff[meas_i] * sign_i[meas_i]
-                var[i] = np.nanvar(x)**0.5
+                std[i] = np.nanvar(x)**0.5
                 med[i] = np.nanmedian(x)
 
-            if np.nanmin(np.abs(var / med)) > 1e-1:
+            if np.nanmin(np.abs(std / med)) > 1e-1:
                 break
 
-            rem = np.nanargmin(np.abs(var / med))
-
-            diffidx = np.where((mp == rem).any(axis=1)
-                               & (~np.isnan(diff))
-                               )[0][-1]
-
-            cond = mp[diffidx, 0] == rem
+            rem = np.nanargmin(np.abs(std / med))
 
             d = med[rem]
 
@@ -129,10 +123,17 @@ class Station_corrector():
         
         NR_idx = n - 1
 
+        if np.isscalar(n):
+            a = np.zeros(0)
+        else:
+            a = np.zeros(len(n))
+        
         for i in NR_idx:
             for j, t in enumerate(self.NR_corr[i][0]):
                 if t > tserver:
                     self.NR_corr[i][3] = self.NR_corr[i][2][j]
-                    print(self.NR_corr[i][2][j])
+                    a[i] = self.NR_corr[i][2][j])
                     break
+        
+        return a
 

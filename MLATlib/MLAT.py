@@ -115,9 +115,9 @@ def FJsq(x, A, b, dim, V, RD, Rn, mode=0, singularity=0):
     scaling = scaling * 1e-6
 
     if mode == -3:
-        Ret = H * np.sqrt(scaling)
+        Ret = (H.swapaxes(0, 2) * np.sqrt(scaling)).swapaxes(0, 2)
     elif mode == -2:
-        Ret = q * np.sqrt(scaling)
+        Ret = (q.T * np.sqrt(scaling)).T
     elif mode == -1:
         Ret = f * np.sqrt(scaling)
     elif mode == 0:
@@ -154,7 +154,7 @@ def GenMeasurements(N, n, Rs):
 
     # ###determine usable measurements
     # lambda >0.99
-    lamb_idx = np.where(abs(RD_sc) > 0.85)[0].astype(int)
+    lamb_idx = np.where(abs(RD_sc) > 0.99)[0].astype(int)
     lamb_idx_N = mp[lamb_idx]
     z = np.zeros([len(lamb_idx), 3])
     z[:, 0] = lamb_idx
@@ -189,7 +189,7 @@ def GenMeasurements(N, n, Rs):
     # m_use = np.ones(len(mp)).astype(bool)
 
     # error if not enough stations left
-    Kmin = 4
+    Kmin = 1
     if len(RD_sc) < Kmin:
         raise MLATError(1)
         # raise MLATError("Not enough measurements available")
@@ -254,11 +254,6 @@ def solve(N, n, Rs, h_baro=np.nan, x0=None):
         x0 = genx0(N, mp, RD_sc, h_baro)
 
     # ### solve and record
-    """xsol = sciop.least_squares(lambda x:
-    #                 FJsq(x, A, b, dim, V, RD, Rn, mode=-1),
-    #                 x0, method='trf', x_scale='jac',
-    #                 verbose=0, max_nfev=50)
-    """
     xlist = []
     sol = sciop.minimize(
                     lambda x: FJsq(x, A, b, dim, V, RD, Rn, mode=0),
@@ -273,8 +268,6 @@ def solve(N, n, Rs, h_baro=np.nan, x0=None):
                              },
                     callback=lambda xk: xlist.append(xk),
                     )
-
-    
 
     xn = sol.x
     opti = 0

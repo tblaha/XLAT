@@ -67,12 +67,15 @@ use_Results = True
 # seek_id = 29421  # hot mess..
 # seek_id = 503201  # best fit
 # seek_id = 1823621  # 2 close stations mess it up
-seek_id = 1869529
+seek_id = 1246303
 # seek_id = 1809908
 
 # seek_id = idx_fake_planes[0]
 
 NR_c_sp = lib.sync.Station_corrector(TRA, Stations, 0.1)
+
+plane_sph = VAL.loc[seek_id, ['lat', 'long', 'geoAlt']]
+
 
 
 
@@ -84,8 +87,19 @@ n = TRA.loc[seek_id, 'M']
 stations = np.array(TRA.loc[seek_id, 'n'])
 N = SP2CART(Stations.loc[stations, ['lat', 'long', 'geoAlt']].to_numpy())
 
+# get clock corr
+ts = TRA.loc[seek_id, 't']
+Sta_corr.ReconstructClocks(ts, Stations.index)
+
+
+# decide clock
+Final_Correct = Sta_corr
+# Final_Correct = NR_c_sp
+ 
+
 # ### get unix time stamps of stations
-Rs_corr = np.array([NR_c_sp.NR_corr[i - 1][3] for i in stations])
+# Rs_corr = np.array([NR_c_sp.NR_corr[i - 1][3] for i in stations])   # no clock correction
+Rs_corr = np.array([Final_Correct.NR_corr[i - 1][3] for i in stations])   # reverse clock correction
 Rs = np.array(TRA.loc[seek_id, 'ns']) * 1e-9 * C0 + Rs_corr  # meters
 
 # baro radius
@@ -110,12 +124,11 @@ inDict = {'A': A, 'b': b, 'V': V, 'D': D, 'dim': dim, 'RD': RD, 'xn': x0,
 
 
 # start MLAT calculations
-#x_sph, inDict = lib.ml.Pandas_Wrapper(TRA, Stations, seek_id, NR_c_sp, solmode='2d')
+x_sph, inDict = lib.ml.Pandas_Wrapper(TRA, Stations, seek_id, Final_Correct, solmode='2d')
 
-pp = lib.plot.HyperPlot(TRA, VAL, Stations, seek_id, CART2SP(x0), inDict, SQfield=False)
+pp = lib.plot.HyperPlot(TRA, VAL, Stations, seek_id, x_sph, inDict, SQfield=False)
 
-#print(la.norm(SP2CART(x_sph) - SP2CART(plane_sph[0])))
-
+print(la.norm(SP2CART(x_sph) - SP2CART(plane_sph)))
 
 #%% initialize
 
@@ -171,7 +184,7 @@ for idx, row in tqdm(TRA.iterrows(), total=len(TRA)):
             # don't compute anything in the first 6 minutes because the clocks
             # are not correct yet
             # TODO: do this properly with row['t']
-            assert(idx > 6*60/3600*len(TRA))
+            # assert(idx > 6*60/3600*len(TRA))
 
             """attempt MLAT calculation"""
             (xn_sph_np[npi],  # spherical location estimate [lat, long, alt]
@@ -219,10 +232,10 @@ TRA.loc[SOL.index, ['lat', 'long', 'geoAlt']] = xn_sph_np
 
 
 ###### write down intermediate results ######
-# TRA.to_pickle("./TRA_7_da421b_.pkl")
-# SOL.to_pickle("./SOL_7_da421b_.pkl")
-# with open('NRc_fvalGT_da421b_7.pkl', 'wb') as f:  # Python 3: open(..., 'wb')
-#     pickle.dump([NR_c, fval_GT], f)
+TRA.to_pickle("./TRA_7_42c45c_.pkl")
+SOL.to_pickle("./SOL_7_42c45c_.pkl")
+with open('NRc_fvalGT_42c45c_7.pkl', 'wb') as f:  # Python 3: open(..., 'wb')
+    pickle.dump([Sta_corr, fval_GT], f)
 
 
 #%% Prune to trustworthy data
@@ -318,7 +331,7 @@ print(cov*100)
 
 #%% write solution
 
-lib.out.writeSolutions("../Comp1_da421b_0.2_37_1.0.csv", SOL_top50)
+# lib.out.writeSolutions("../Comp1_da421b_0.2_37_1.0.csv", SOL_top50)
 # lib.out.writeSolutions("../Train7_da421b.csv", SOL_top50)
 
 
