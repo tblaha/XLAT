@@ -41,6 +41,8 @@ class Station_corrector():
         # NR_corr[n - 1][2] --> list of total clock correction
         # NR_corr[n - 1][3] --> current clock correction
         self.NR_corr = [list([[], [], [], 0]) for _ in range(len(NR))]
+        
+        self.ac_disc = []
 
     def AbsoluteSync(self):
         """ this is unused """
@@ -70,6 +72,9 @@ class Station_corrector():
         
         M = row.iat[6]
         if M < 3:
+            return
+        
+        if row['ac'] in self.ac_disc:
             return
 
         mp = self.maps[M]
@@ -102,10 +107,13 @@ class Station_corrector():
                 std[i] = np.nanvar(x)**0.5
                 med[i] = np.nanmedian(x)
 
-            if np.nanmin(np.abs(std / med)) > 1e-1:
+            score = np.abs(std)
+
+            if (np.nanmin(score) > 80) or (np.nanmin(std/abs(med)**0.5) > 0.6):
+                self.ac_disc.append(row['ac'])
                 break
 
-            rem = np.nanargmin(np.abs(std / med))
+            rem = np.nanargmin(score)
 
             d = med[rem]
 
@@ -132,7 +140,7 @@ class Station_corrector():
             for j, t in enumerate(self.NR_corr[i][0]):
                 if t > tserver:
                     self.NR_corr[i][3] = self.NR_corr[i][2][j]
-                    a[i] = self.NR_corr[i][2][j])
+                    a[i] = self.NR_corr[i][2][j]
                     break
         
         return a

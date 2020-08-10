@@ -25,7 +25,7 @@ from tqdm import tqdm  # awesome progress bar for iterative loops
 
 #%% import
 
-use_pickle = False  # False --> use unmodified .csv (slow)
+use_pickle = True  # False --> use unmodified .csv (slow)
 use_file = 7  # -1 --> competition; 1 through 7 --> training
 
 (Measurements,  # the huge 2M lines csv as pandas DF
@@ -53,7 +53,7 @@ use_Results = True
 
 
 #%% investigate single measurment with plots
-
+"""
 # select measurement to compute stuff for
 # seek_id = 9999999 # fake plane
 # seek_id = 111376 # some actually existing plane
@@ -67,17 +67,16 @@ use_Results = True
 # seek_id = 29421  # hot mess..
 # seek_id = 503201  # best fit
 # seek_id = 1823621  # 2 close stations mess it up
-seek_id = 1246303
+seek_id = 1018676
+seek_id = 1020299
+seek_id = 727620
 # seek_id = 1809908
 
 # seek_id = idx_fake_planes[0]
 
 NR_c_sp = lib.sync.Station_corrector(TRA, Stations, 0.1)
 
-plane_sph = VAL.loc[seek_id, ['lat', 'long', 'geoAlt']]
-
-
-
+plane_sph = TRA.loc[seek_id, ['lat', 'long', 'geoAlt']]
 
  # ### preprocess stations and measurements
 # get number of stations
@@ -89,16 +88,16 @@ N = SP2CART(Stations.loc[stations, ['lat', 'long', 'geoAlt']].to_numpy())
 
 # get clock corr
 ts = TRA.loc[seek_id, 't']
-Sta_corr.ReconstructClocks(ts, Stations.index)
+Sta_corr.ReconstructClocks(ts-1, Stations.index)
+Sta_corr.RelativeSync(TRA.loc[seek_id, :], seek_id)
 
 
 # decide clock
 Final_Correct = Sta_corr
 # Final_Correct = NR_c_sp
- 
+
 
 # ### get unix time stamps of stations
-# Rs_corr = np.array([NR_c_sp.NR_corr[i - 1][3] for i in stations])   # no clock correction
 Rs_corr = np.array([Final_Correct.NR_corr[i - 1][3] for i in stations])   # reverse clock correction
 Rs = np.array(TRA.loc[seek_id, 'ns']) * 1e-9 * C0 + Rs_corr  # meters
 
@@ -122,14 +121,14 @@ inDict = {'A': A, 'b': b, 'V': V, 'D': D, 'dim': dim, 'RD': RD, 'xn': x0,
           'fun': lambda x, m: lib.ml.FJsq(x, A, b, dim, V, RD, Rn, mode=m),
           'xlist': np.zeros([2, 3]), 'ecode': 0, 'mp': mp, 'Rn': Rn, 'sol': {}}
 
-
 # start MLAT calculations
 x_sph, inDict = lib.ml.Pandas_Wrapper(TRA, Stations, seek_id, Final_Correct, solmode='2d')
 
-pp = lib.plot.HyperPlot(TRA, VAL, Stations, seek_id, x_sph, inDict, SQfield=False)
+pp = lib.plot.HyperPlot(TRA, VAL, Stations, seek_id, x_sph, inDict, SQfield=True, LevelExtent='small', labels=False)
 
 print(la.norm(SP2CART(x_sph) - SP2CART(plane_sph)))
 
+"""
 #%% initialize
 
 ###### Pandas Dataframes ######
@@ -147,7 +146,7 @@ TRA['MLAT'] = False
 
 
 ###### Clock Corrections ######
-alpha = 2e-1  # Filter constant for discrete IIR clock offset filter
+alpha = 1  # Filter constant for discrete IIR clock offset filter
 
 # clock corrector class (unit of corrections --> meters!)
 Sta_corr = lib.sync.Station_corrector(TRA, Stations, alpha)
@@ -185,6 +184,7 @@ for idx, row in tqdm(TRA.iterrows(), total=len(TRA)):
             # are not correct yet
             # TODO: do this properly with row['t']
             # assert(idx > 6*60/3600*len(TRA))
+            assert(False)
 
             """attempt MLAT calculation"""
             (xn_sph_np[npi],  # spherical location estimate [lat, long, alt]

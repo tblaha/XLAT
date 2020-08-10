@@ -63,11 +63,11 @@ def ErrorCovariance(SEL, disc=None):
     fig = plt.figure()
     if disc is not None:
         sc = plt.scatter(x, y, s=2, c=disc[use].astype(int), picker=True, label='Algorithm residual')
-        scGT = plt.scatter(x, yGT, s=2, c=SEL.loc[use, 'dim'], picker=True, label='Ground Truth residual')
+        # scGT = plt.scatter(x, yGT, s=2, c=SEL.loc[use, 'dim'], picker=True, label='Ground Truth residual')
         fig.colorbar(sc)
     else:
         sc = plt.scatter(x, y, s=2, c=SEL.loc[use, 'dim'], picker=True, label='Algorithm residual')
-        plt.scatter(x, yGT, s=2, c=SEL.loc[use, 'dim'], picker=True, label='Ground Truth residual')
+        # plt.scatter(x, yGT, s=2, c=SEL.loc[use, 'dim'], picker=True, label='Ground Truth residual')
         fig.colorbar(sc)
     
     ax = plt.gca()
@@ -108,7 +108,7 @@ def StationErrorPlot(NR_corrector):
     return fig
 
 
-def HyperPlot(MR, SR, NR, idx, x_sph, inDict, SQfield=False):
+def HyperPlot(MR, SR, NR, idx, x_sph, inDict, SQfield=False, LevelExtent='large', labels=True):
 
     # initiate plane plot
     pp = PlanePlot()
@@ -124,10 +124,27 @@ def HyperPlot(MR, SR, NR, idx, x_sph, inDict, SQfield=False):
 
     # plot stations
     pp.addNodeById(NR, MR, [idx])
+    
+    # get ground truth
+    if SR.index.intersection([idx]).astype(bool).any():
+        x_sph_GT = SR.loc[idx, ['lat', 'long', 'geoAlt']]
+    else:
+        x_sph_GT = MR.loc[idx, ['lat', 'long', 'geoAlt']]
 
     # calculate scalar fields over the current extend of the plot
     n_vals = 50
-    longl, longu, latl, latu = pp.ax.get_extent()
+    
+    # decide extent
+    if LevelExtent == 'large':
+        longl, longu, latl, latu = pp.ax.get_extent()
+    elif LevelExtent == 'small':
+        longl, longu, latl, latu = (min(x_sph[1], x_sph_GT[1]) - 0.25,
+                                    max(x_sph[1], x_sph_GT[1]) + 0.25,
+                                    min(x_sph[0], x_sph_GT[0]) - 0.25,
+                                    max(x_sph[0], x_sph_GT[0]) + 0.25,
+                                    )
+    
+    # compute grid
     long, lat = np.meshgrid(np.linspace(longl,
                                         longu, n_vals),
                             np.linspace(latl,
@@ -172,7 +189,8 @@ def HyperPlot(MR, SR, NR, idx, x_sph, inDict, SQfield=False):
                            )
         Ns2 = Ns[inDict['mp'][i]]
         label = "%d-%d" % (Ns2[0], Ns2[1])
-        pp.ax.clabel(cs, fontsize=10, fmt=label)
+        if labels:
+            pp.ax.clabel(cs, fontsize=10, fmt=label)
 
     # plot history
     xhist = np.array(inDict["xlist"])
@@ -203,14 +221,6 @@ class PlanePlot():
         self.start_extent = True
 
         self.ax.set_extent(self.extent, crs=ccrs.PlateCarree())
-
-        # self.ax.stock_img()
-        # ax.add_feature(cfeature.LAND.with_scale('110m'))
-        # ax.add_feature(cfeature.COASTLINE.with_scale('110m'))
-        # ax.add_feature(cfeature.BORDERS, linestyle='--')
-        # ax.add_feature(cfeature.LAKES, alpha=0.5)
-        # ax.add_feature(cfeature.RIVERS)
-        # self.ax.add_feature(cfeature.STATES.with_scale('50m'), linestyle=':')
 
         self.ax.add_feature(cfeature.COASTLINE.with_scale('50m'))
         self.ax.add_feature(cfeature.BORDERS.with_scale('50m'), linestyle='--')
